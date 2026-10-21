@@ -13,6 +13,8 @@
  * granted to it).
  */
 export type RpcMethodPermission =
+  /** Fixed, non-mutating runtime observations; never grants generic workspace access. */
+  | 'observer-read'
   /** Projects, worktrees, terminals, files, git, browser, orchestration and integrations; equals
    *  running commands as this host's user. */
   | 'workspace'
@@ -38,6 +40,7 @@ export const RUNTIME_DEVICE_GRANTS = [
 export type RuntimeDeviceGrant = (typeof RUNTIME_DEVICE_GRANTS)[number]
 
 export const RPC_METHOD_PERMISSIONS: readonly RpcMethodPermission[] = [
+  'observer-read',
   'workspace',
   'desktop-control',
   'accounts-admin',

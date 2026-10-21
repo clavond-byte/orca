@@ -49,6 +49,8 @@ export type E2EEChannelOptions = {
 export type E2EEAuthenticatedDevice = DevicePrincipal & {
   // Absent for a keyed row, which never presented a bearer.
   deviceToken?: string
+  // Stamped only by the server's separate observer store after token proof.
+  observerCredentialId?: string
 }
 
 export class E2EEChannel {

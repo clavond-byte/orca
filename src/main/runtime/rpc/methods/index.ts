@@ -1,4 +1,5 @@
 import { STATUS_METHODS } from './status'
+import { RUNTIME_OBSERVER_METHODS } from './runtime-observer'
 import { SIDEBAR_INPUT_METHODS } from './sidebar-inputs'
 import { ORCAD_TERMINAL_CENSUS_METHODS } from './orcad-terminal-census'
 import { ORCAD_MIGRATION_METHODS } from './orcad-migration'
@@ -77,6 +78,7 @@ import { ORCA_SIDEBAR_INPUTS_IS_MAIN } from '../../../../shared/sidebar-inputs-s
 // auditing the security boundary or wiring new CLI commands.
 export const ALL_RPC_METHODS = [
   ...STATUS_METHODS,
+  ...RUNTIME_OBSERVER_METHODS,
   ...ORCAD_TERMINAL_CENSUS_METHODS,
   ...ORCAD_MIGRATION_METHODS,
   ...AGENT_HOOK_METHODS,

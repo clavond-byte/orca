@@ -15,6 +15,7 @@ export type RpcCallerScope =
   /** `delegated`: a phone a paired desktop holds a child device for; it reaches no further than that
    *  desktop, which is never granted `pairing-admin`. */
   | { kind: 'mobile'; delegated?: boolean }
+  | { kind: 'runtime-observer' }
   | { kind: 'runtime-paired'; grants: readonly RuntimeDeviceGrant[] }
 
 export const OWNER_RPC_CALLER_SCOPE: RpcCallerScope = { kind: 'owner' }
@@ -43,6 +44,11 @@ export function denyRpcMethodForCaller(
   methodName: string,
   permission: RpcMethodPermission | undefined
 ): string | null {
+  if (scope.kind === 'runtime-observer') {
+    return permission === 'observer-read' && methodName === 'observer.runtimeIdentity'
+      ? null
+      : `Method '${methodName}' is not available to runtime observers`
+  }
   if (scope.kind === 'mobile') {
     if (!MOBILE_RPC_METHOD_ALLOWLIST.has(methodName)) {
       return `Method '${methodName}' is not available to mobile clients`

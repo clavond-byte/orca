@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto'
 import type { WebSocket } from 'ws'
 import type { DeviceEntry, DeviceRegistry } from '../device-registry'
+import type { ObserverCredentialStore } from '../observer-credential-store'
 import { EPHEMERAL_DEVICE_SWEEP_INTERVAL_MS } from '../ephemeral-device-rows'
 import { devicePrincipalOf } from '../device-principal'
 import type { E2EEKeypair } from '../e2ee-keypair'
@@ -48,6 +49,7 @@ export type AuthenticatedMobileSocket = {
 
 type MobileSocketWiringOptions = {
   deviceRegistry: DeviceRegistry
+  observerCredentialStore?: ObserverCredentialStore
   e2eeKeypair: E2EEKeypair
   onText: (
     socket: AuthenticatedMobileSocket,
@@ -71,6 +73,7 @@ function toAuthenticatedDevice(device: DeviceEntry): E2EEAuthenticatedDevice {
 
 export class MobileSocketWiring {
   private readonly deviceRegistry: DeviceRegistry
+  private readonly observerCredentialStore: ObserverCredentialStore | null
   private readonly e2eeKeypair: E2EEKeypair
   private readonly onText: MobileSocketWiringOptions['onText']
   private readonly onBinary: MobileSocketWiringOptions['onBinary']
@@ -86,6 +89,7 @@ export class MobileSocketWiring {
 
   constructor(options: MobileSocketWiringOptions) {
     this.deviceRegistry = options.deviceRegistry
+    this.observerCredentialStore = options.observerCredentialStore ?? null
     this.e2eeKeypair = options.e2eeKeypair
     this.onText = options.onText
     this.onBinary = options.onBinary
@@ -186,6 +190,24 @@ export class MobileSocketWiring {
         requireV2: metadata.transport === 'relay',
         outboundMemoryBudget: this.outboundMemoryBudget,
         resolveAuthenticatedDevice: (token) => {
+          if (token.startsWith('orca-observer-v1-')) {
+            // Observer bearers never enter the old device registry and never cross a relay.
+            const observer =
+              metadata.transport === 'direct'
+                ? this.observerCredentialStore?.authenticate(token)
+                : null
+            return observer
+              ? {
+                  deviceId: `observer:${observer.id}`,
+                  scope: 'runtime',
+                  clientId: `observer:${observer.id}`,
+                  callerFingerprint: observer.tokenHash,
+                  credentialRevision: 1,
+                  deviceToken: token,
+                  observerCredentialId: observer.id
+                }
+              : null
+          }
           const device = this.deviceRegistry.validateToken(token)
           if (!device) {
             return null
@@ -239,8 +261,10 @@ export class MobileSocketWiring {
           this.authenticatedSockets.set(ws, socket)
           transport.setClientId(ws, device.deviceId)
           // Why: deferred — the client's e2ee_authenticated must not wait on a secure-file rewrite.
-          this.deviceRegistry.updateLastSeenDeferred(device.deviceId)
-          this.onReady?.(socket)
+          if (!device.observerCredentialId) {
+            this.deviceRegistry.updateLastSeenDeferred(device.deviceId)
+            this.onReady?.(socket)
+          }
         },
         onError: (code, reason) => {
           const reportUnpairedDevice = code === 4001 && reason === 'Unauthorized'
@@ -265,7 +289,7 @@ export class MobileSocketWiring {
       })
       channel.onBinaryMessage((bytes) => {
         const socket = this.authenticatedSockets.get(ws)
-        if (socket) {
+        if (socket && !socket.device.observerCredentialId) {
           this.onBinary(socket, bytes)
         }
       })
