@@ -1,7 +1,7 @@
 import { OrcaRuntimeWithReadKittyFile } from '../orca-runtime-read-kitty-file'
 import type { RuntimeWorkspaceRepoScanRefresh } from './workspace-repo-scan-refresh'
 import type { ResolvedWorktree } from '../runtime-worktree-path-identity'
-import { composeWorktreeId, splitWorktreeIdForFilesystem } from '../../../shared/worktree/id'
+import { splitWorktreeIdForFilesystem } from '../../../shared/worktree/id'
 import { isPathInsideOrEqual } from '../../../shared/cross-platform-path'
 import type { ResolvedWorktreeSnapshot } from '../runtime-resolved-worktree-cache'
 import { RESOLVED_WORKTREE_CACHE_TTL_MS } from '../orca-runtime-postlude'
@@ -37,10 +37,6 @@ export abstract class RuntimeWorkspaceCatalog extends OrcaRuntimeWithReadKittyFi
   protected abstract refreshRepoWorktreeScan(
     ...args: Parameters<RuntimeWorkspaceRepoScanRefresh['refreshRepoWorktreeScan']>
   ): ReturnType<RuntimeWorkspaceRepoScanRefresh['refreshRepoWorktreeScan']>
-
-  protected abstract listRepoWorktreesForResolutionUncached(
-    ...args: Parameters<RuntimeWorkspaceRepoScanRefresh['listRepoWorktreesForResolutionUncached']>
-  ): ReturnType<RuntimeWorkspaceRepoScanRefresh['listRepoWorktreesForResolutionUncached']>
 
   protected listKnownResolvedWorktreesForExplicitTarget(
     targetWorktreeId: string,
@@ -81,53 +77,24 @@ export abstract class RuntimeWorkspaceCatalog extends OrcaRuntimeWithReadKittyFi
     return resolved
   }
 
-  /** Logical catalog check only: it does not attest external same-path checkout reincarnation. */
-  async getCurrentLocalObserverWorktreeInstanceId(worktreeId: string): Promise<string | null> {
+  /** Retained Orca catalog identity only: no filesystem read or physical-liveness claim. */
+  getLogicalLocalObserverWorktreeInstanceId(worktreeId: string): string | null {
     const store = this.store
     const parsed = splitWorktreeIdForFilesystem(worktreeId)
     if (!store || !parsed?.repoId || !parsed.worktreePath) {
       return null
     }
-    const ownerRows = () =>
-      store
-        .getRepos()
-        .filter(
-          (repo) =>
-            repo.id === parsed.repoId && getRepoExecutionHostId(repo) === LOCAL_EXECUTION_HOST_ID
-        )
-    const owners = ownerRows()
-    const before = store.peekUniqueWorktreeInstanceForHost?.(worktreeId, LOCAL_EXECUTION_HOST_ID)
-    if (owners.length !== 1 || before?.state !== 'unique') {
+    const owners = store
+      .getRepos()
+      .filter(
+        (repo) =>
+          repo.id === parsed.repoId && getRepoExecutionHostId(repo) === LOCAL_EXECUTION_HOST_ID
+      )
+    if (owners.length !== 1) {
       return null
     }
-    const repo = owners[0]
-    const mutationRevision = getWorktreeScanMutationRevision()
-    const scan = await this.listRepoWorktreesForResolutionUncached(
-      repo,
-      resolveLocalProjectRuntimeForRepo(store, repo)
-    )
-    if (
-      !scan.ok ||
-      this.store !== store ||
-      getWorktreeScanMutationRevision() !== mutationRevision
-    ) {
-      return null
-    }
-    const currentOwners = ownerRows()
-    const after = store.peekUniqueWorktreeInstanceForHost?.(worktreeId, LOCAL_EXECUTION_HOST_ID)
-    if (
-      currentOwners.length !== 1 ||
-      currentOwners[0].path !== repo.path ||
-      currentOwners[0].worktreeBasePath !== repo.worktreeBasePath ||
-      after?.state !== 'unique' ||
-      after.instanceId !== before.instanceId
-    ) {
-      return null
-    }
-    const matches = scan.worktrees.filter(
-      (worktree) => !worktree.prunable && composeWorktreeId(repo.id, worktree.path) === worktreeId
-    )
-    return matches.length === 1 ? after.instanceId : null
+    const instance = store.peekUniqueWorktreeInstanceForHost?.(worktreeId, LOCAL_EXECUTION_HOST_ID)
+    return instance?.state === 'unique' ? instance.instanceId : null
   }
 
   /** A warm fleet snapshot already answers any selector for free, so scoped scanning must yield to it. */

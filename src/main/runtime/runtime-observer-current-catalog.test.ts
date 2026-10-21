@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
 import type { Repo } from '../../shared/repo-types'
-import type { RuntimeWorktreeScanResult } from './repo-worktree-resolution-scan'
 import { OrcaRuntimeService } from './orca-runtime'
 
 const repo: Repo = {
@@ -11,26 +10,17 @@ const repo: Repo = {
   badgeColor: 'blue'
 }
 const worktreeId = 'repo-id::/private/worktree'
-const gitRow = {
-  path: '/private/worktree',
-  head: '0'.repeat(40),
-  branch: 'main',
-  isBare: false,
-  isMainWorktree: false
-}
 
 class CatalogProbe extends OrcaRuntimeService {
-  scan: RuntimeWorktreeScanResult = { ok: true, worktrees: [gitRow] }
-  pendingScan: Promise<RuntimeWorktreeScanResult> | null = null
   scans = 0
-  protected override async listRepoWorktreesForResolutionUncached(): Promise<RuntimeWorktreeScanResult> {
+  protected override async listRepoWorktreesForResolutionUncached(): Promise<never> {
     this.scans += 1
-    return this.pendingScan ?? this.scan
+    throw new Error('Logical observer projection must not scan the filesystem')
   }
 }
 
-describe('observer current local worktree check', () => {
-  it('requires a live local checkout and the matching host-qualified instance', async () => {
+describe('observer retained local catalog lookup', () => {
+  it('requires a unique host-qualified instance without migration or a filesystem scan', () => {
     const runtime = new CatalogProbe()
     let instanceId: string | undefined = 'instance-a'
     Object.assign(runtime, {
@@ -45,20 +35,13 @@ describe('observer current local worktree check', () => {
         }
       }
     })
-    await expect(runtime.getCurrentLocalObserverWorktreeInstanceId(worktreeId)).resolves.toBe(
-      'instance-a'
-    )
+    expect(runtime.getLogicalLocalObserverWorktreeInstanceId(worktreeId)).toBe('instance-a')
     instanceId = undefined
-    await expect(runtime.getCurrentLocalObserverWorktreeInstanceId(worktreeId)).resolves.toBeNull()
-    instanceId = 'instance-b'
-    runtime.scan = { ok: true, worktrees: [] }
-    await expect(runtime.getCurrentLocalObserverWorktreeInstanceId(worktreeId)).resolves.toBeNull()
-    runtime.scan = { ok: false, worktrees: [gitRow] }
-    await expect(runtime.getCurrentLocalObserverWorktreeInstanceId(worktreeId)).resolves.toBeNull()
-    expect(runtime.scans).toBe(3)
+    expect(runtime.getLogicalLocalObserverWorktreeInstanceId(worktreeId)).toBeNull()
+    expect(runtime.scans).toBe(0)
   })
 
-  it('denies ambiguous or nonlocal owners without scanning', async () => {
+  it('denies competing aliases, duplicate local owners, and remote-only owners', () => {
     const runtime = new CatalogProbe()
     Object.assign(runtime, {
       store: {
@@ -66,50 +49,40 @@ describe('observer current local worktree check', () => {
         peekUniqueWorktreeInstanceForHost: () => ({ state: 'unique', instanceId: 'instance-a' })
       }
     })
-    await expect(runtime.getCurrentLocalObserverWorktreeInstanceId(worktreeId)).resolves.toBe(
-      'instance-a'
-    )
+    expect(runtime.getLogicalLocalObserverWorktreeInstanceId(worktreeId)).toBe('instance-a')
     Object.assign(runtime, {
       store: {
         getRepos: () => [repo, { ...repo }],
         peekUniqueWorktreeInstanceForHost: () => ({ state: 'unique', instanceId: 'instance-a' })
       }
     })
-    await expect(runtime.getCurrentLocalObserverWorktreeInstanceId(worktreeId)).resolves.toBeNull()
+    expect(runtime.getLogicalLocalObserverWorktreeInstanceId(worktreeId)).toBeNull()
     Object.assign(runtime, {
       store: {
         getRepos: () => [{ ...repo, connectionId: 'remote' }],
         peekUniqueWorktreeInstanceForHost: () => ({ state: 'unique', instanceId: 'instance-a' })
       }
     })
-    await expect(runtime.getCurrentLocalObserverWorktreeInstanceId(worktreeId)).resolves.toBeNull()
+    expect(runtime.getLogicalLocalObserverWorktreeInstanceId(worktreeId)).toBeNull()
     Object.assign(runtime, {
       store: {
         getRepos: () => [repo],
         peekUniqueWorktreeInstanceForHost: () => ({ state: 'ambiguous' })
       }
     })
-    await expect(runtime.getCurrentLocalObserverWorktreeInstanceId(worktreeId)).resolves.toBeNull()
-    expect(runtime.scans).toBe(1)
+    expect(runtime.getLogicalLocalObserverWorktreeInstanceId(worktreeId)).toBeNull()
+    expect(runtime.scans).toBe(0)
   })
 
-  it('rejects a catalog instance replaced while the uncached scan is pending', async () => {
+  it('labels a retained logical identity without pretending to prove path presence', () => {
     const runtime = new CatalogProbe()
-    let instanceId = 'instance-a'
-    let resolveScan!: (scan: RuntimeWorktreeScanResult) => void
-    runtime.pendingScan = new Promise((resolve) => {
-      resolveScan = resolve
-    })
     Object.assign(runtime, {
       store: {
         getRepos: () => [repo],
-        peekUniqueWorktreeInstanceForHost: () => ({ state: 'unique', instanceId })
+        peekUniqueWorktreeInstanceForHost: () => ({ state: 'unique', instanceId: 'instance-a' })
       }
     })
-    const pending = runtime.getCurrentLocalObserverWorktreeInstanceId(worktreeId)
-    expect(runtime.scans).toBe(1)
-    instanceId = 'instance-b'
-    resolveScan({ ok: true, worktrees: [gitRow] })
-    await expect(pending).resolves.toBeNull()
+    expect(runtime.getLogicalLocalObserverWorktreeInstanceId(worktreeId)).toBe('instance-a')
+    expect(runtime.scans).toBe(0)
   })
 })

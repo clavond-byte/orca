@@ -35,8 +35,8 @@ describe('observer WebSocket request authorization', () => {
     const mutation = vi.fn()
     const runtime = new OrcaRuntimeService()
     const catalog = vi
-      .spyOn(runtime, 'getCurrentLocalObserverWorktreeInstanceId')
-      .mockResolvedValue('instance-a')
+      .spyOn(runtime, 'getLogicalLocalObserverWorktreeInstanceId')
+      .mockReturnValue('instance-a')
     runtime.mobileSessionTabsByWorktree.set(worktreeLocator, {
       worktree: worktreeLocator,
       worktreeInstanceId: 'instance-a',
@@ -230,7 +230,7 @@ describe('observer WebSocket request authorization', () => {
 
     // Keep the cached A snapshot intact while the current catalog disappears or switches to B.
     runtime.mobileSessionTabsByWorktree.set(worktreeLocator, originalSnapshot)
-    catalog.mockResolvedValue(null)
+    catalog.mockReturnValue(null)
     send(
       encrypt(JSON.stringify({ id: 'catalog-removed', method: 'observer.sessionInventory' }), key)
     )
@@ -240,7 +240,7 @@ describe('observer WebSocket request authorization', () => {
       ok: true,
       result: { state: 'unknown' }
     })
-    catalog.mockResolvedValue('instance-b')
+    catalog.mockReturnValue('instance-b')
     send(
       encrypt(JSON.stringify({ id: 'catalog-replaced', method: 'observer.sessionInventory' }), key)
     )
@@ -252,20 +252,14 @@ describe('observer WebSocket request authorization', () => {
     })
     expect(JSON.stringify(replies().slice(6))).not.toContain('session-a')
 
-    // Retiring the snapshot while a catalog scan is pending must not leak its session IDs.
-    let resolveCatalog!: (instanceId: string | null) => void
-    catalog.mockImplementationOnce(
-      () =>
-        new Promise((resolve) => {
-          resolveCatalog = resolve
-        })
-    )
+    // A publication changed reentrantly during the logical lookup must not leak stale IDs.
+    catalog.mockImplementationOnce(() => {
+      runtime.mobileSessionTabsByWorktree.delete(worktreeLocator)
+      return 'instance-a'
+    })
     send(
       encrypt(JSON.stringify({ id: 'snapshot-retired', method: 'observer.sessionInventory' }), key)
     )
-    await vi.waitFor(() => expect(resolveCatalog).toBeTypeOf('function'))
-    runtime.mobileSessionTabsByWorktree.delete(worktreeLocator)
-    resolveCatalog('instance-a')
     await vi.waitFor(() => expect(replies()).toHaveLength(9))
     expect(replies()[8]).toMatchObject({
       id: 'snapshot-retired',
@@ -273,6 +267,25 @@ describe('observer WebSocket request authorization', () => {
       result: { state: 'unknown' }
     })
     expect(JSON.stringify(replies()[8])).not.toContain('session-a')
+
+    runtime.mobileSessionTabsByWorktree.set(worktreeLocator, originalSnapshot)
+    catalog.mockImplementationOnce(() => {
+      originalSnapshot.snapshotVersion += 1
+      return 'instance-a'
+    })
+    send(
+      encrypt(
+        JSON.stringify({ id: 'snapshot-version-changed', method: 'observer.sessionInventory' }),
+        key
+      )
+    )
+    await vi.waitFor(() => expect(replies()).toHaveLength(10))
+    expect(replies()[9]).toMatchObject({
+      id: 'snapshot-version-changed',
+      ok: true,
+      result: { state: 'unknown' }
+    })
+    expect(JSON.stringify(replies()[9])).not.toContain('session-a')
 
     // An already-authenticated encrypted socket must not outlive its scoped bearer.
     const expiresAt = store.authenticate(issued.token)?.expiresAt
@@ -282,8 +295,8 @@ describe('observer WebSocket request authorization', () => {
     const clock = vi.spyOn(Date, 'now').mockReturnValue(expiresAt)
     try {
       send(encrypt(JSON.stringify({ id: 'expired-e2ee', method: 'observer.runtimeIdentity' }), key))
-      await vi.waitFor(() => expect(replies()).toHaveLength(10))
-      expect(replies()[9]).toMatchObject({
+      await vi.waitFor(() => expect(replies()).toHaveLength(11))
+      expect(replies()[10]).toMatchObject({
         id: 'expired-e2ee',
         ok: false,
         error: { code: 'unauthorized' }
@@ -294,8 +307,8 @@ describe('observer WebSocket request authorization', () => {
 
     store.revoke(issued.id)
     send(encrypt(JSON.stringify({ id: 'revoked-e2ee', method: 'observer.runtimeIdentity' }), key))
-    await vi.waitFor(() => expect(replies()).toHaveLength(11))
-    expect(replies()[10]).toMatchObject({
+    await vi.waitFor(() => expect(replies()).toHaveLength(12))
+    expect(replies()[11]).toMatchObject({
       id: 'revoked-e2ee',
       ok: false,
       error: { code: 'unauthorized' }
