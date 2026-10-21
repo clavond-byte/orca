@@ -1,7 +1,7 @@
 import { OrcaRuntimeWithReadKittyFile } from '../orca-runtime-read-kitty-file'
 import type { RuntimeWorkspaceRepoScanRefresh } from './workspace-repo-scan-refresh'
 import type { ResolvedWorktree } from '../runtime-worktree-path-identity'
-import { splitWorktreeIdForFilesystem } from '../../../shared/worktree/id'
+import { composeWorktreeId, splitWorktreeIdForFilesystem } from '../../../shared/worktree/id'
 import { isPathInsideOrEqual } from '../../../shared/cross-platform-path'
 import type { ResolvedWorktreeSnapshot } from '../runtime-resolved-worktree-cache'
 import { RESOLVED_WORKTREE_CACHE_TTL_MS } from '../orca-runtime-postlude'
@@ -75,6 +75,40 @@ export abstract class RuntimeWorkspaceCatalog extends OrcaRuntimeWithReadKittyFi
       }
     }
     return resolved
+  }
+
+  /** Fail-closed, non-creating check of the local checkout and host-qualified catalog row. */
+  async getCurrentLocalObserverWorktreeInstanceId(worktreeId: string): Promise<string | null> {
+    const store = this.store
+    const parsed = splitWorktreeIdForFilesystem(worktreeId)
+    if (!store || !parsed?.repoId || !parsed.worktreePath) {
+      return null
+    }
+    const owners = store
+      .getRepos()
+      .filter(
+        (repo) =>
+          repo.id === parsed.repoId && getRepoExecutionHostId(repo) === LOCAL_EXECUTION_HOST_ID
+      )
+    if (owners.length !== 1) {
+      return null
+    }
+    const meta = store.getWorktreeMetaForHost?.(worktreeId, LOCAL_EXECUTION_HOST_ID)
+    if (!meta?.instanceId) {
+      return null
+    }
+    const repo = owners[0]
+    const scan = await this.listRepoWorktreesForResolutionUncached(
+      repo,
+      resolveLocalProjectRuntimeForRepo(store, repo)
+    )
+    if (!scan.ok) {
+      return null
+    }
+    const matches = scan.worktrees.filter(
+      (worktree) => !worktree.prunable && composeWorktreeId(repo.id, worktree.path) === worktreeId
+    )
+    return matches.length === 1 ? meta.instanceId : null
   }
 
   /** A warm fleet snapshot already answers any selector for free, so scoped scanning must yield to it. */

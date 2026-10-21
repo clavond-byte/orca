@@ -1,22 +1,12 @@
 // Owner-local administration only. Never prints the bearer or puts it in Orca's device registry.
 import { existsSync } from 'node:fs'
-import { isAbsolute, relative, resolve } from 'node:path'
+import { resolve } from 'node:path'
 import { ObserverCredentialStore } from '../../src/main/runtime/observer-credential-store'
 import { writeSecureFile } from '../../src/shared/secure-file'
+import { outsideObserverSource } from './observer-credential-path'
 
 const repoRoot = resolve(import.meta.dirname, '../..')
-
-function outsideSource(path: string): string {
-  if (!isAbsolute(path)) {
-    throw new Error('Use an absolute path')
-  }
-  const absolute = resolve(path)
-  const inRepo = relative(repoRoot, absolute)
-  if (inRepo === '' || (!inRepo.startsWith('..') && !isAbsolute(inRepo))) {
-    throw new Error('Credential files must be outside the source checkout')
-  }
-  return absolute
-}
+const outsideSource = (path: string) => outsideObserverSource(repoRoot, path)
 
 const [operation, rawUserDataPath, argument, worktreeId, worktreeInstanceId] = process.argv.slice(2)
 if (!rawUserDataPath || !argument) {

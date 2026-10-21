@@ -108,11 +108,23 @@ export class ObserverCredentialStore {
       throw new Error('Invalid observer store')
     }
     const store = parsed as { version?: unknown; credentials?: unknown }
+    if (store.version !== 1 || !Array.isArray(store.credentials)) {
+      throw new Error('Invalid observer store')
+    }
+    // The unactivated candidate briefly wrote locator-only scoped v1 rows. Never reinterpret
+    // them as unscoped or bind them to a new checkout; require a fresh owner-local store/reissue.
     if (
-      store.version !== 1 ||
-      !Array.isArray(store.credentials) ||
-      !store.credentials.every(validRow)
+      store.credentials.some(
+        (value) =>
+          typeof value === 'object' &&
+          value !== null &&
+          'worktreeId' in value &&
+          !('worktreeInstanceId' in value)
+      )
     ) {
+      throw new Error('Intermediate scoped observer store requires fresh path and reissue')
+    }
+    if (!store.credentials.every(validRow)) {
       throw new Error('Invalid observer store')
     }
     const rows = store.credentials as ObserverCredentialRow[]

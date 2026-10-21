@@ -12,6 +12,7 @@
     "./scripts/happy-dom-offscreen-canvas.ts",
     "./scripts/happy-dom-mutation-observer-retention.ts",
     "./scripts/vitest-node-runtime-pool.ts",
+    "./scripts/observer-credential-*.ts",
     "../src/main/**/*",
     "../src/renderer/src/lib/skill-freshness-display-status.ts",
     "../src/renderer/src/store/slices/worktrees/create/worktree-create-payload.ts",

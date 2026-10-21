@@ -18,7 +18,7 @@ export const RUNTIME_OBSERVER_METHODS = [
     name: 'observer.sessionInventory',
     permission: 'observer-read',
     params: null,
-    handler: (
+    handler: async (
       _params,
       { runtime, observerWorktreeId, observerWorktreeInstanceId, observerScopeId }
     ) => {
@@ -42,6 +42,18 @@ export const RUNTIME_OBSERVER_METHODS = [
         snapshot.worktreeInstanceId !== observerWorktreeInstanceId
       ) {
         // A replacement checkout at the same locator cannot inherit the earlier credential's view.
+        return { ...base, state: 'unknown' as const }
+      }
+      // A retained published snapshot is not authority if the current local checkout/catalog
+      // no longer names this exact instance. Scan failures and nonlocal ownership stay unknown.
+      let currentInstanceId: string | null
+      try {
+        currentInstanceId =
+          await runtime.getCurrentLocalObserverWorktreeInstanceId(observerWorktreeId)
+      } catch {
+        return { ...base, state: 'unknown' as const }
+      }
+      if (currentInstanceId !== observerWorktreeInstanceId) {
         return { ...base, state: 'unknown' as const }
       }
       if (snapshot.tabs.length > MAX_OBSERVER_SNAPSHOT_TABS) {

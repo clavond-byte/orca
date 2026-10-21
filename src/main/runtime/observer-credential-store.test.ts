@@ -84,6 +84,31 @@ describe('separate observer credentials', () => {
     expect(readFileSync(path, 'utf8')).toBe('{bad-json')
   })
 
+  it('fails closed with an explicit fresh-store prerequisite for intermediate scoped rows', () => {
+    const { dir, store } = setup()
+    const issued = store.issue('worktree-a', 'instance-a')
+    const path = join(dir, 'observer-credentials.v1.json')
+    const saved = JSON.parse(readFileSync(path, 'utf8')) as {
+      version: number
+      credentials: unknown[]
+    }
+    saved.credentials.push({
+      id: '00000000-0000-4000-8000-000000000000',
+      tokenHash: '0'.repeat(64),
+      createdAt: Date.now() - 4_000_000,
+      worktreeId: 'old-locator',
+      expiresAt: Date.now() - 1
+    })
+    writeFileSync(path, JSON.stringify(saved))
+    expect(store.authenticate(issued.token)).toBeNull()
+    expect(() => store.issue('worktree-b', 'instance-b')).toThrow(
+      'Intermediate scoped observer store requires fresh path and reissue'
+    )
+    expect(() => store.revoke(issued.id)).toThrow(
+      'Intermediate scoped observer store requires fresh path and reissue'
+    )
+  })
+
   it('serializes owner-local writes instead of losing a concurrent revocation', () => {
     const { dir, store } = setup()
     const issued = store.issue()
