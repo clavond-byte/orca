@@ -37,6 +37,8 @@ jobs:
           pnpm build:orcad-prebuilds --smoke
       - name: Build DEV-only server package
         run: pnpm build:orcad
+      - name: Build Linux package test template
+        run: node config/scripts/build-orcad-template.mjs --targets linux-x64-glibc
       - name: Smoke packaged server
         run: |
           test -s out/orcad/orcad.js
