@@ -4,6 +4,7 @@ import type {
   PairingProvisionRelayParams
 } from '../../../shared/mobile-relay-credential-contract'
 import { callerScopeOf, devicePrincipalOf } from '../device-principal'
+import { ObserverCredentialStore } from '../observer-credential-store'
 import { registerSocketDeviceKey } from './runtime-rpc-device-key-registration'
 import type { AuthenticatedMobileSocket } from '../rpc/mobile-socket-wiring'
 import type { RpcRequest, RpcResponse } from '../rpc/core'
@@ -143,6 +144,43 @@ export class RuntimeRpcWebSocketDispatch extends RuntimeRpcMobileDevices {
     }
     // Why: E2EE already authenticated the channel; authorize by that bound identity, not a repeated request field.
     const token = boundToken ?? requestToken
+    if (authenticatedSocket?.device.observerCredentialId) {
+      const observerId = authenticatedSocket.device.observerCredentialId
+      // The marker came from E2EE admission, not request JSON. Re-read the separate store on
+      // every request so revocation applies even to a socket that has already authenticated.
+      const observer =
+        authenticatedSocket.transport.transport === 'direct' && boundToken
+          ? new ObserverCredentialStore(this.userDataPath).resolve(observerId, boundToken)
+          : null
+      if (!observer) {
+        reply(JSON.stringify(this.buildError(request.id, 'unauthorized', 'Invalid observer token')))
+        return
+      }
+      const abortRegistration = ws ? this.registerWebSocketDispatchAbort(ws) : null
+      const boundedReply = limitRuntimeRpcReplySize(request.id, reply, (id, code, message) =>
+        this.buildError(id, code, message)
+      )
+      try {
+        await this.dispatcher.dispatchStreaming(request, boundedReply, {
+          callerScope: { kind: 'runtime-observer', worktreeId: observer.worktreeId },
+          observerWorktreeId: observer.worktreeId,
+          observerWorktreeInstanceId: observer.worktreeInstanceId,
+          observerScopeId: observer.id,
+          authenticatedCallerFingerprint: observer.tokenHash,
+          clientId: `observer:${observer.id}`,
+          connectionId: authenticatedSocket.connectionId,
+          signal: abortRegistration?.signal
+        })
+      } finally {
+        abortRegistration?.dispose()
+      }
+      return
+    }
+    // A bearer in request JSON is not the observer handshake, even when a normal device has it.
+    if (token?.startsWith('orca-observer-v1-')) {
+      reply(JSON.stringify(this.buildError(request.id, 'unauthorized', 'Observer E2EE required')))
+      return
+    }
     if (!token && !authenticatedSocket) {
       reply(JSON.stringify(this.buildError(request.id, 'unauthorized', 'Missing device token')))
       return

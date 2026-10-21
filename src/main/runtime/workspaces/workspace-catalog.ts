@@ -77,6 +77,26 @@ export abstract class RuntimeWorkspaceCatalog extends OrcaRuntimeWithReadKittyFi
     return resolved
   }
 
+  /** Retained Orca catalog identity only: no filesystem read or physical-liveness claim. */
+  getLogicalLocalObserverWorktreeInstanceId(worktreeId: string): string | null {
+    const store = this.store
+    const parsed = splitWorktreeIdForFilesystem(worktreeId)
+    if (!store || !parsed?.repoId || !parsed.worktreePath) {
+      return null
+    }
+    const owners = store
+      .getRepos()
+      .filter(
+        (repo) =>
+          repo.id === parsed.repoId && getRepoExecutionHostId(repo) === LOCAL_EXECUTION_HOST_ID
+      )
+    if (owners.length !== 1) {
+      return null
+    }
+    const instance = store.peekUniqueWorktreeInstanceForHost?.(worktreeId, LOCAL_EXECUTION_HOST_ID)
+    return instance?.state === 'unique' ? instance.instanceId : null
+  }
+
   /** A warm fleet snapshot already answers any selector for free, so scoped scanning must yield to it. */
   protected hasFreshResolvedWorktreeCache(): boolean {
     return this.resolvedWorktrees.isFresh(getWorktreeScanMutationRevision())

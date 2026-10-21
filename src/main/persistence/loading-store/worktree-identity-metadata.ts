@@ -47,6 +47,48 @@ function resolveAliasIdentityKey(state: WorktreeMetaState, alias: string): strin
   return winner
 }
 
+export type UniqueWorktreeInstanceLookup =
+  | { state: 'unique'; instanceId: string }
+  | { state: 'missing' | 'ambiguous' }
+
+/** Authorization lookup: never migrates legacy rows or selects a winner from competing aliases. */
+export function peekUniqueWorktreeInstanceForHost(
+  runtime: MetadataRuntime,
+  worktreeId: string,
+  executionHostId: ExecutionHostId
+): UniqueWorktreeInstanceLookup {
+  const state = runtime.state
+  const alias = composeWorktreeHostIdentity(executionHostId, worktreeId)
+  const keys = [...new Set(state.worktreeIdentityAliases?.[alias] ?? [])]
+  if (keys.length === 0) {
+    return { state: 'missing' }
+  }
+  if (keys.length !== 1) {
+    return { state: 'ambiguous' }
+  }
+  const meta = state.worktreeMetaByIdentity?.[keys[0]]
+  if (!meta?.instanceId || meta.hostId !== executionHostId) {
+    return { state: 'missing' }
+  }
+  const expectedKey = canonicalWorktreeIdentity({
+    worktreeId,
+    executionHostId,
+    instanceId: meta.instanceId
+  })
+  if (keys[0] !== expectedKey) {
+    return { state: 'ambiguous' }
+  }
+  const legacy = state.worktreeMeta[worktreeId]
+  if (
+    legacy &&
+    (legacy.hostId === undefined || legacy.hostId === executionHostId) &&
+    legacy.instanceId !== meta.instanceId
+  ) {
+    return { state: 'ambiguous' }
+  }
+  return { state: 'unique', instanceId: meta.instanceId }
+}
+
 /** Drop identity metadata no alias points at any more. */
 export function pruneUnreferencedWorktreeIdentityMeta(
   state: PersistedState,

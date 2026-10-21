@@ -28,6 +28,8 @@ import {
   getAllWorktreeMetaForHost as getAllWorktreeMetaForHostOperation,
   getWorktreeMetaForHost as getWorktreeMetaForHostOperation,
   migrateWorktreeMetadataLocator,
+  peekUniqueWorktreeInstanceForHost as peekUniqueWorktreeInstanceForHostOperation,
+  type UniqueWorktreeInstanceLookup,
   removeWorktreeMetadataForHost,
   setWorktreeMetaForHost as setWorktreeMetaForHostOperation,
   WORKTREE_METADATA_DOMAINS
@@ -82,6 +84,17 @@ export class MetadataLineageOperations {
   getAllWorktreeMetaForHost(executionHostId: ExecutionHostId): Record<string, WorktreeMeta> {
     return getAllWorktreeMetaForHostOperation(
       this[metadataLineageOperationsContext].runtime,
+      executionHostId
+    )
+  }
+
+  peekUniqueWorktreeInstanceForHost(
+    worktreeId: string,
+    executionHostId: ExecutionHostId
+  ): UniqueWorktreeInstanceLookup {
+    return peekUniqueWorktreeInstanceForHostOperation(
+      this[metadataLineageOperationsContext].runtime,
+      worktreeId,
       executionHostId
     )
   }
