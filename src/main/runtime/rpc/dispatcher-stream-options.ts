@@ -8,6 +8,7 @@ import type { RpcCallerScope } from './rpc-caller-scope'
 export type RpcDispatchStreamingOptions = Pick<
   RpcContext,
   | 'authenticatedCallerFingerprint'
+  | 'observerWorktreeId'
   | 'connectionId'
   | 'signal'
   | 'clientId'
@@ -37,6 +38,7 @@ export function rpcContextFromTransport(
 ): RpcContext {
   return {
     runtime,
+    observerWorktreeId: options?.observerWorktreeId,
     signal: options?.signal,
     requestId: request.id,
     connectionId: options?.connectionId,

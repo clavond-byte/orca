@@ -9,7 +9,7 @@ import {
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { DeviceRegistry } from './device-registry'
 import { ObserverCredentialStore } from './observer-credential-store'
 
@@ -37,6 +37,25 @@ describe('separate observer credentials', () => {
       issued.token
     )
     expect(new DeviceRegistry(dir).validateToken(issued.token)).toBeNull()
+  })
+
+  it('binds a scoped credential to one worktree and expires it after one hour', () => {
+    const { store } = setup()
+    const now = Date.now()
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(now)
+    try {
+      expect(() => store.issue('')).toThrow('Invalid observer worktree scope')
+      const issued = store.issue('worktree-a')
+      expect(store.authenticate(issued.token)).toMatchObject({
+        id: issued.id,
+        worktreeId: 'worktree-a',
+        expiresAt: now + 3_600_000
+      })
+      clock.mockReturnValue(now + 3_600_000)
+      expect(store.authenticate(issued.token)).toBeNull()
+    } finally {
+      clock.mockRestore()
+    }
   })
 
   it('rejects unknown, malformed, and revoked credentials', () => {

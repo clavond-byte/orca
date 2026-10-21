@@ -18,10 +18,10 @@ function outsideSource(path: string): string {
   return absolute
 }
 
-const [operation, rawUserDataPath, argument] = process.argv.slice(2)
+const [operation, rawUserDataPath, argument, worktreeId] = process.argv.slice(2)
 if (!rawUserDataPath || !argument) {
   throw new Error(
-    'Usage: observer-credential-admin.ts issue|revoke ABS_USER_DATA ABS_OUTPUT_PATH|ID'
+    'Usage: observer-credential-admin.ts issue|revoke ABS_USER_DATA ABS_OUTPUT_PATH|ID [WORKTREE_ID]'
   )
 }
 const userDataPath = outsideSource(rawUserDataPath)
@@ -32,7 +32,7 @@ if (operation === 'issue') {
   if (existsSync(outputPath)) {
     throw new Error('Refusing to overwrite existing bearer output')
   }
-  const issued = store.issue()
+  const issued = store.issue(worktreeId)
   try {
     if (!writeSecureFile(outputPath, `${issued.token}\n`, { durable: true })) {
       throw new Error('Bearer output could not be secured')

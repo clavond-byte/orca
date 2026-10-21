@@ -28,12 +28,31 @@ describe('observer WebSocket request authorization', () => {
     const dir = mkdtempSync(join(tmpdir(), 'orca-observer-e2ee-'))
     directories.push(dir)
     const store = new ObserverCredentialStore(dir)
-    const issued = store.issue()
+    const issued = store.issue('worktree-a')
     const serverKeys = generateKeyPair()
     const clientKeys = generateKeyPair()
     const mutation = vi.fn()
+    const runtime = new OrcaRuntimeService()
+    runtime.mobileSessionTabsByWorktree.set('worktree-a', {
+      worktree: 'worktree-a',
+      publicationEpoch: 'test-epoch',
+      snapshotVersion: 3,
+      activeGroupId: null,
+      activeTabId: null,
+      activeTabType: null,
+      tabs: [
+        {
+          type: 'agent-session',
+          id: 'tab-a',
+          title: 'private title',
+          sessionId: 'session-a',
+          agent: 'codex',
+          isActive: true
+        }
+      ]
+    })
     const server = new OrcaRuntimeRpcServer({
-      runtime: new OrcaRuntimeService(),
+      runtime,
       userDataPath: dir,
       enableWebSocket: false,
       methods: [
@@ -91,15 +110,66 @@ describe('observer WebSocket request authorization', () => {
     send(encrypt(JSON.stringify({ id: 'read-e2ee', method: 'observer.runtimeIdentity' }), key))
     await vi.waitFor(() => expect(replies()).toHaveLength(1))
     expect(replies()[0]).toMatchObject({ id: 'read-e2ee', ok: true })
-    send(encrypt(JSON.stringify({ id: 'write-e2ee', method: 'test.mutate' }), key))
+    send(
+      encrypt(JSON.stringify({ id: 'inventory-e2ee', method: 'observer.sessionInventory' }), key)
+    )
     await vi.waitFor(() => expect(replies()).toHaveLength(2))
-    expect(replies()[1]).toMatchObject({ id: 'write-e2ee', ok: false })
+    expect(replies()[1]).toMatchObject({
+      id: 'inventory-e2ee',
+      ok: true,
+      result: {
+        worktreeId: 'worktree-a',
+        state: 'observed',
+        knownSessionIds: ['session-a'],
+        snapshotFreshness: 'unverified',
+        coverage: 'published-agent-tabs-only'
+      }
+    })
+    expect(JSON.stringify(replies()[1])).not.toContain('private title')
+    send(encrypt(JSON.stringify({ id: 'write-e2ee', method: 'test.mutate' }), key))
+    await vi.waitFor(() => expect(replies()).toHaveLength(3))
+    expect(replies()[2]).toMatchObject({ id: 'write-e2ee', ok: false })
     expect(mutation).not.toHaveBeenCalled()
+
+    runtime.mobileSessionTabsByWorktree.set('worktree-b', {
+      worktree: 'worktree-b',
+      publicationEpoch: 'foreign-epoch',
+      snapshotVersion: 1,
+      activeGroupId: null,
+      activeTabId: null,
+      activeTabType: null,
+      tabs: [
+        {
+          type: 'agent-session',
+          id: 'foreign-tab',
+          title: 'foreign title',
+          sessionId: 'foreign-session',
+          agent: 'codex',
+          isActive: true
+        }
+      ]
+    })
+    runtime.mobileSessionTabsByWorktree.delete('worktree-a')
+    send(
+      encrypt(JSON.stringify({ id: 'inventory-unknown', method: 'observer.sessionInventory' }), key)
+    )
+    await vi.waitFor(() => expect(replies()).toHaveLength(4))
+    expect(replies()[3]).toMatchObject({
+      id: 'inventory-unknown',
+      ok: true,
+      result: {
+        worktreeId: 'worktree-a',
+        state: 'unknown',
+        snapshotFreshness: 'unverified',
+        coverage: 'published-agent-tabs-only'
+      }
+    })
+    expect(JSON.stringify(replies()[3])).not.toContain('foreign-session')
 
     store.revoke(issued.id)
     send(encrypt(JSON.stringify({ id: 'revoked-e2ee', method: 'observer.runtimeIdentity' }), key))
-    await vi.waitFor(() => expect(replies()).toHaveLength(3))
-    expect(replies()[2]).toMatchObject({
+    await vi.waitFor(() => expect(replies()).toHaveLength(5))
+    expect(replies()[4]).toMatchObject({
       id: 'revoked-e2ee',
       ok: false,
       error: { code: 'unauthorized' }
@@ -164,6 +234,11 @@ describe('observer WebSocket request authorization', () => {
       id: 'read',
       ok: true,
       result: { runtimeId: expect.any(String), appVersion: expect.any(String) }
+    })
+    expect(await call('inventory-unscoped', 'observer.sessionInventory')).toMatchObject({
+      id: 'inventory-unscoped',
+      ok: false,
+      error: { code: 'forbidden' }
     })
     expect(await call('write', 'test.mutate')).toMatchObject({ id: 'write', ok: false })
     expect(mutation).not.toHaveBeenCalled()

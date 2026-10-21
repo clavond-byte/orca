@@ -162,7 +162,8 @@ export class RuntimeRpcWebSocketDispatch extends RuntimeRpcMobileDevices {
       )
       try {
         await this.dispatcher.dispatchStreaming(request, boundedReply, {
-          callerScope: { kind: 'runtime-observer' },
+          callerScope: { kind: 'runtime-observer', worktreeId: observer.worktreeId },
+          observerWorktreeId: observer.worktreeId,
           authenticatedCallerFingerprint: observer.tokenHash,
           clientId: `observer:${observer.id}`,
           connectionId: authenticatedSocket.connectionId,

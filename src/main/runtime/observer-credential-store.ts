@@ -13,11 +13,24 @@ type ObserverCredentialRow = {
   id: string
   tokenHash: string
   createdAt: number
+  worktreeId?: string
+  expiresAt?: number
 }
 
 export type ObserverCredential = {
   id: string
   tokenHash: string
+  worktreeId?: string
+  expiresAt?: number
+}
+
+function validWorktreeId(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    value.length > 0 &&
+    value.length <= 512 &&
+    !/[\u0000-\u001f\u007f]/.test(value)
+  )
 }
 
 function tokenHash(token: string): string {
@@ -36,7 +49,13 @@ function validRow(value: unknown): value is ObserverCredentialRow {
     /^[0-9a-f]{64}$/.test(row.tokenHash) &&
     typeof row.createdAt === 'number' &&
     Number.isSafeInteger(row.createdAt) &&
-    row.createdAt > 0
+    row.createdAt > 0 &&
+    (row.worktreeId === undefined
+      ? row.expiresAt === undefined
+      : validWorktreeId(row.worktreeId) &&
+        typeof row.expiresAt === 'number' &&
+        Number.isSafeInteger(row.expiresAt) &&
+        row.expiresAt > row.createdAt)
   )
 }
 
@@ -93,15 +112,20 @@ export class ObserverCredentialStore {
   }
 
   /** The bearer is returned once, only after its hash is durably stored. */
-  issue(): { id: string; token: string } {
+  issue(worktreeId?: string): { id: string; token: string } {
+    if (worktreeId !== undefined && !validWorktreeId(worktreeId)) {
+      throw new Error('Invalid observer worktree scope')
+    }
     return this.withWriteLock(() => {
       const rows = this.readRows()
       const id = randomUUID()
       const token = `${TOKEN_PREFIX}${randomBytes(32).toString('base64url')}`
+      const createdAt = Date.now()
+      const scope = worktreeId === undefined ? {} : { worktreeId, expiresAt: createdAt + 3_600_000 }
       if (
         !writeDurableSecureJsonFile(this.path, {
           version: 1,
-          credentials: [...rows, { id, tokenHash: tokenHash(token), createdAt: Date.now() }]
+          credentials: [...rows, { id, tokenHash: tokenHash(token), createdAt, ...scope }]
         })
       ) {
         throw new Error('Observer credential store could not be secured')
@@ -138,7 +162,13 @@ export class ObserverCredentialStore {
       const row = this.readRows().find((candidate) =>
         timingSafeEqual(Buffer.from(candidate.tokenHash, 'hex'), expected)
       )
-      return row ? { id: row.id, tokenHash: row.tokenHash } : null
+      if (!row || (row.expiresAt !== undefined && row.expiresAt <= Date.now())) return null
+      return {
+        id: row.id,
+        tokenHash: row.tokenHash,
+        worktreeId: row.worktreeId,
+        expiresAt: row.expiresAt
+      }
     } catch {
       return null
     }
