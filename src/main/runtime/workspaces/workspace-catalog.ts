@@ -38,6 +38,10 @@ export abstract class RuntimeWorkspaceCatalog extends OrcaRuntimeWithReadKittyFi
     ...args: Parameters<RuntimeWorkspaceRepoScanRefresh['refreshRepoWorktreeScan']>
   ): ReturnType<RuntimeWorkspaceRepoScanRefresh['refreshRepoWorktreeScan']>
 
+  protected abstract listRepoWorktreesForResolutionUncached(
+    ...args: Parameters<RuntimeWorkspaceRepoScanRefresh['listRepoWorktreesForResolutionUncached']>
+  ): ReturnType<RuntimeWorkspaceRepoScanRefresh['listRepoWorktreesForResolutionUncached']>
+
   protected listKnownResolvedWorktreesForExplicitTarget(
     targetWorktreeId: string,
     targetWorktree: ResolvedWorktree | null
