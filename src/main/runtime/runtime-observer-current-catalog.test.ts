@@ -35,8 +35,11 @@ describe('observer current local worktree check', () => {
     Object.assign(runtime, {
       store: {
         getRepos: () => [repo],
-        getWorktreeMetaForHost: (id: string, host: string) =>
-          id === worktreeId && host === 'local' && instanceId ? { instanceId } : undefined
+        getAllWorktreeMetaForHost: (host: string) =>
+          host === 'local' && instanceId ? { [worktreeId]: { instanceId } } : {},
+        getWorktreeMetaForHost: () => {
+          throw new Error('Observer must not invoke the migrating single-row getter')
+        }
       }
     })
     await expect(runtime.getCurrentLocalObserverWorktreeInstanceId(worktreeId)).resolves.toBe(
@@ -57,7 +60,7 @@ describe('observer current local worktree check', () => {
     Object.assign(runtime, {
       store: {
         getRepos: () => [repo, { ...repo, connectionId: 'remote' }],
-        getWorktreeMetaForHost: () => ({ instanceId: 'instance-a' })
+        getAllWorktreeMetaForHost: () => ({ [worktreeId]: { instanceId: 'instance-a' } })
       }
     })
     await expect(runtime.getCurrentLocalObserverWorktreeInstanceId(worktreeId)).resolves.toBe(
@@ -66,14 +69,14 @@ describe('observer current local worktree check', () => {
     Object.assign(runtime, {
       store: {
         getRepos: () => [repo, { ...repo }],
-        getWorktreeMetaForHost: () => ({ instanceId: 'instance-a' })
+        getAllWorktreeMetaForHost: () => ({ [worktreeId]: { instanceId: 'instance-a' } })
       }
     })
     await expect(runtime.getCurrentLocalObserverWorktreeInstanceId(worktreeId)).resolves.toBeNull()
     Object.assign(runtime, {
       store: {
         getRepos: () => [{ ...repo, connectionId: 'remote' }],
-        getWorktreeMetaForHost: () => ({ instanceId: 'instance-a' })
+        getAllWorktreeMetaForHost: () => ({ [worktreeId]: { instanceId: 'instance-a' } })
       }
     })
     await expect(runtime.getCurrentLocalObserverWorktreeInstanceId(worktreeId)).resolves.toBeNull()

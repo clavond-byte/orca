@@ -97,7 +97,9 @@ export abstract class RuntimeWorkspaceCatalog extends OrcaRuntimeWithReadKittyFi
     if (owners.length !== 1) {
       return null
     }
-    const meta = store.getWorktreeMetaForHost?.(worktreeId, LOCAL_EXECUTION_HOST_ID)
+    // The single-row getter may migrate legacy metadata and schedule a write. A remote
+    // observer must use the read-only host projection and fail closed if unavailable.
+    const meta = store.getAllWorktreeMetaForHost?.(LOCAL_EXECUTION_HOST_ID)?.[worktreeId]
     if (!meta?.instanceId) {
       return null
     }
