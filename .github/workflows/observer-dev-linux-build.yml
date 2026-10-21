@@ -1,0 +1,64 @@
+name: DEV-only Orca observer Linux artifact
+
+on:
+  push:
+    branches:
+      - codex/observer-dev-linux-build-20261021
+    paths:
+      - .github/workflows/observer-dev-linux-build.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: observer-dev-linux-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: 88c5e868f738cea69633483a03e0096257f6effb
+          persist-credentials: false
+      - name: Check exact observer source
+        shell: bash
+        run: |
+          test "$(git rev-parse HEAD)" = 88c5e868f738cea69633483a03e0096257f6effb
+          git status --porcelain
+      - uses: ./.github/actions/install-node-dependencies
+      - uses: ./.github/actions/build-mobile-web-bundle
+      - name: Build pinned Linux x64 prebuild
+        run: |
+          pnpm build:orcad-prebuilds
+          pnpm build:orcad-prebuilds --require-slots "$(node config/scripts/build-orcad-prebuilds.mjs --print-slot)"
+          pnpm build:orcad-prebuilds --smoke
+      - name: Build DEV-only server package
+        run: pnpm build:orcad
+      - name: Smoke packaged server
+        run: |
+          test -s out/orcad/orcad.js
+          test -d out/runtimes
+          node out/orcad/orcad.js --orcad-smoke-load-check
+          pnpm test:node-server --artifact src/main/orcad/orcad-packaged-structured-chat.integration.test.ts --maxWorkers=2
+      - name: Record exact artifact hashes
+        shell: bash
+        run: |
+          printf 'source_commit=%s\n' "$(git rev-parse HEAD)" > observer-dev-build-source.txt
+          find out/orcad out/runtimes -type f -print0 | sort -z | xargs -0 sha256sum > observer-dev-build-sha256.txt
+          test -s observer-dev-build-sha256.txt
+      - name: Upload DEV-only candidate
+        uses: actions/upload-artifact@v7
+        with:
+          name: observer-dev-linux-x64-88c5e868
+          path: |
+            out/orcad/
+            out/runtimes/
+            observer-dev-build-source.txt
+            observer-dev-build-sha256.txt
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 2
+          compression-level: 0
