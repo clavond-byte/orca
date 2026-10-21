@@ -45,13 +45,16 @@ export function denyRpcMethodForCaller(
   permission: RpcMethodPermission | undefined
 ): string | null {
   if (scope.kind === 'runtime-observer') {
-    if (permission === 'observer-read' && methodName === 'observer.runtimeIdentity') return null
+    if (permission === 'observer-read' && methodName === 'observer.runtimeIdentity') {
+      return null
+    }
     if (
       permission === 'observer-read' &&
       methodName === 'observer.sessionInventory' &&
       scope.worktreeId
-    )
+    ) {
       return null
+    }
     return `Method '${methodName}' is not available to runtime observers`
   }
   if (scope.kind === 'mobile') {

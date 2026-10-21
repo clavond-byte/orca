@@ -26,7 +26,9 @@ export const RUNTIME_OBSERVER_METHODS = [
         snapshotFreshness: 'unverified' as const,
         coverage: 'published-agent-tabs-only' as const
       }
-      if (!observerWorktreeId) return { ...base, state: 'unknown' as const }
+      if (!observerWorktreeId) {
+        return { ...base, state: 'unknown' as const }
+      }
       const snapshot = runtime.mobileSessionTabsByWorktree.get(observerWorktreeId)
       if (!snapshot || snapshot.worktree !== observerWorktreeId) {
         return { ...base, state: 'unknown' as const }

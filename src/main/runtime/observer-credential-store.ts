@@ -25,12 +25,16 @@ export type ObserverCredential = {
 }
 
 function validWorktreeId(value: unknown): value is string {
-  return (
-    typeof value === 'string' &&
-    value.length > 0 &&
-    value.length <= 512 &&
-    !/[\u0000-\u001f\u007f]/.test(value)
-  )
+  if (typeof value !== 'string' || value.length === 0 || value.length > 512) {
+    return false
+  }
+  for (let index = 0; index < value.length; index++) {
+    const code = value.charCodeAt(index)
+    if (code < 32 || code === 127) {
+      return false
+    }
+  }
+  return true
 }
 
 function tokenHash(token: string): string {
@@ -162,7 +166,9 @@ export class ObserverCredentialStore {
       const row = this.readRows().find((candidate) =>
         timingSafeEqual(Buffer.from(candidate.tokenHash, 'hex'), expected)
       )
-      if (!row || (row.expiresAt !== undefined && row.expiresAt <= Date.now())) return null
+      if (!row || (row.expiresAt !== undefined && row.expiresAt <= Date.now())) {
+        return null
+      }
       return {
         id: row.id,
         tokenHash: row.tokenHash,
