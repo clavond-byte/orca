@@ -30,6 +30,7 @@ export const RUNTIME_OBSERVER_METHODS = [
         readAt: Date.now(),
         // The read time does not attest when the tab snapshot was published.
         snapshotFreshness: 'unverified' as const,
+        checkoutContinuity: 'unverified' as const,
         coverage: 'published-agent-tabs-only' as const
       }
       if (!observerWorktreeId || !observerWorktreeInstanceId || !observerScopeId) {
@@ -46,6 +47,7 @@ export const RUNTIME_OBSERVER_METHODS = [
       }
       // A retained published snapshot is not authority if the current local checkout/catalog
       // no longer names this exact instance. Scan failures and nonlocal ownership stay unknown.
+      const snapshotVersion = snapshot.snapshotVersion
       let currentInstanceId: string | null
       try {
         currentInstanceId =
@@ -53,7 +55,12 @@ export const RUNTIME_OBSERVER_METHODS = [
       } catch {
         return { ...base, state: 'unknown' as const }
       }
-      if (currentInstanceId !== observerWorktreeInstanceId) {
+      if (
+        currentInstanceId !== observerWorktreeInstanceId ||
+        runtime.mobileSessionTabsByWorktree.get(observerWorktreeId) !== snapshot ||
+        snapshot.snapshotVersion !== snapshotVersion
+      ) {
+        // A publication retired or replaced during the scan cannot be reported as current.
         return { ...base, state: 'unknown' as const }
       }
       if (snapshot.tabs.length > MAX_OBSERVER_SNAPSHOT_TABS) {

@@ -21,10 +21,11 @@ const gitRow = {
 
 class CatalogProbe extends OrcaRuntimeService {
   scan: RuntimeWorktreeScanResult = { ok: true, worktrees: [gitRow] }
+  pendingScan: Promise<RuntimeWorktreeScanResult> | null = null
   scans = 0
   protected override async listRepoWorktreesForResolutionUncached(): Promise<RuntimeWorktreeScanResult> {
     this.scans += 1
-    return this.scan
+    return this.pendingScan ?? this.scan
   }
 }
 
@@ -35,8 +36,10 @@ describe('observer current local worktree check', () => {
     Object.assign(runtime, {
       store: {
         getRepos: () => [repo],
-        getAllWorktreeMetaForHost: (host: string) =>
-          host === 'local' && instanceId ? { [worktreeId]: { instanceId } } : {},
+        peekUniqueWorktreeInstanceForHost: (id: string, host: string) =>
+          id === worktreeId && host === 'local' && instanceId
+            ? { state: 'unique', instanceId }
+            : { state: 'missing' },
         getWorktreeMetaForHost: () => {
           throw new Error('Observer must not invoke the migrating single-row getter')
         }
@@ -60,7 +63,7 @@ describe('observer current local worktree check', () => {
     Object.assign(runtime, {
       store: {
         getRepos: () => [repo, { ...repo, connectionId: 'remote' }],
-        getAllWorktreeMetaForHost: () => ({ [worktreeId]: { instanceId: 'instance-a' } })
+        peekUniqueWorktreeInstanceForHost: () => ({ state: 'unique', instanceId: 'instance-a' })
       }
     })
     await expect(runtime.getCurrentLocalObserverWorktreeInstanceId(worktreeId)).resolves.toBe(
@@ -69,17 +72,44 @@ describe('observer current local worktree check', () => {
     Object.assign(runtime, {
       store: {
         getRepos: () => [repo, { ...repo }],
-        getAllWorktreeMetaForHost: () => ({ [worktreeId]: { instanceId: 'instance-a' } })
+        peekUniqueWorktreeInstanceForHost: () => ({ state: 'unique', instanceId: 'instance-a' })
       }
     })
     await expect(runtime.getCurrentLocalObserverWorktreeInstanceId(worktreeId)).resolves.toBeNull()
     Object.assign(runtime, {
       store: {
         getRepos: () => [{ ...repo, connectionId: 'remote' }],
-        getAllWorktreeMetaForHost: () => ({ [worktreeId]: { instanceId: 'instance-a' } })
+        peekUniqueWorktreeInstanceForHost: () => ({ state: 'unique', instanceId: 'instance-a' })
+      }
+    })
+    await expect(runtime.getCurrentLocalObserverWorktreeInstanceId(worktreeId)).resolves.toBeNull()
+    Object.assign(runtime, {
+      store: {
+        getRepos: () => [repo],
+        peekUniqueWorktreeInstanceForHost: () => ({ state: 'ambiguous' })
       }
     })
     await expect(runtime.getCurrentLocalObserverWorktreeInstanceId(worktreeId)).resolves.toBeNull()
     expect(runtime.scans).toBe(1)
+  })
+
+  it('rejects a catalog instance replaced while the uncached scan is pending', async () => {
+    const runtime = new CatalogProbe()
+    let instanceId = 'instance-a'
+    let resolveScan!: (scan: RuntimeWorktreeScanResult) => void
+    runtime.pendingScan = new Promise((resolve) => {
+      resolveScan = resolve
+    })
+    Object.assign(runtime, {
+      store: {
+        getRepos: () => [repo],
+        peekUniqueWorktreeInstanceForHost: () => ({ state: 'unique', instanceId })
+      }
+    })
+    const pending = runtime.getCurrentLocalObserverWorktreeInstanceId(worktreeId)
+    expect(runtime.scans).toBe(1)
+    instanceId = 'instance-b'
+    resolveScan({ ok: true, worktrees: [gitRow] })
+    await expect(pending).resolves.toBeNull()
   })
 })

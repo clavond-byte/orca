@@ -6,10 +6,15 @@ on:
       - .github/workflows/observer-source-verify.yml
       - config/scripts/observer-credential-*.ts
       - config/tsconfig.node.json
+      - src/main/persistence/loading-store/worktree-identity-metadata.ts
+      - src/main/persistence/loading-store/metadata-lineage-operations.ts
+      - src/main/persistence/loading-store/worktree-meta-alias-projection.test.ts
+      - src/main/runtime/runtime-store-contract.ts
       - src/main/runtime/observer-credential-store*.ts
       - src/main/runtime/runtime-observer-current-catalog.test.ts
       - src/main/runtime/runtime-rpc-observer-auth.test.ts
       - src/main/runtime/rpc/rpc-caller-scope*.ts
+      - src/main/runtime/rpc/mobile-socket-wiring.test.ts
       - src/main/runtime/rpc/methods/runtime-observer.ts
       - src/main/runtime/workspaces/workspace-catalog.ts
 permissions:
@@ -40,11 +45,15 @@ jobs:
           bun-version-file: config/.bun-version
       - name: Check affected server and owner-local admin source
         run: pnpm run typecheck:ci --project=config/tsconfig.node.json --bun-concurrency=1 --bun-threads=2
+      - name: Verify generated RPC parameter catalog
+        run: pnpm run verify:rpc-params-catalog
       - name: Exercise observer scope, catalog, expiry and path guards
         run: |
           pnpm exec vitest run \
             config/scripts/observer-credential-path.test.ts \
+            src/main/persistence/loading-store/worktree-meta-alias-projection.test.ts \
             src/main/runtime/observer-credential-store.test.ts \
             src/main/runtime/runtime-observer-current-catalog.test.ts \
             src/main/runtime/runtime-rpc-observer-auth.test.ts \
+            src/main/runtime/rpc/mobile-socket-wiring.test.ts \
             src/main/runtime/rpc/rpc-caller-scope.test.ts

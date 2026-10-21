@@ -127,6 +127,7 @@ describe('observer WebSocket request authorization', () => {
         state: 'observed',
         knownSessionIds: ['session-a'],
         snapshotFreshness: 'unverified',
+        checkoutContinuity: 'unverified',
         coverage: 'published-agent-tabs-only'
       }
     })
@@ -221,6 +222,7 @@ describe('observer WebSocket request authorization', () => {
         scopeId: issued.id,
         state: 'unknown',
         snapshotFreshness: 'unverified',
+        checkoutContinuity: 'unverified',
         coverage: 'published-agent-tabs-only'
       }
     })
@@ -250,6 +252,28 @@ describe('observer WebSocket request authorization', () => {
     })
     expect(JSON.stringify(replies().slice(6))).not.toContain('session-a')
 
+    // Retiring the snapshot while a catalog scan is pending must not leak its session IDs.
+    let resolveCatalog!: (instanceId: string | null) => void
+    catalog.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveCatalog = resolve
+        })
+    )
+    send(
+      encrypt(JSON.stringify({ id: 'snapshot-retired', method: 'observer.sessionInventory' }), key)
+    )
+    await vi.waitFor(() => expect(resolveCatalog).toBeTypeOf('function'))
+    runtime.mobileSessionTabsByWorktree.delete(worktreeLocator)
+    resolveCatalog('instance-a')
+    await vi.waitFor(() => expect(replies()).toHaveLength(9))
+    expect(replies()[8]).toMatchObject({
+      id: 'snapshot-retired',
+      ok: true,
+      result: { state: 'unknown' }
+    })
+    expect(JSON.stringify(replies()[8])).not.toContain('session-a')
+
     // An already-authenticated encrypted socket must not outlive its scoped bearer.
     const expiresAt = store.authenticate(issued.token)?.expiresAt
     if (expiresAt === undefined) {
@@ -258,8 +282,8 @@ describe('observer WebSocket request authorization', () => {
     const clock = vi.spyOn(Date, 'now').mockReturnValue(expiresAt)
     try {
       send(encrypt(JSON.stringify({ id: 'expired-e2ee', method: 'observer.runtimeIdentity' }), key))
-      await vi.waitFor(() => expect(replies()).toHaveLength(9))
-      expect(replies()[8]).toMatchObject({
+      await vi.waitFor(() => expect(replies()).toHaveLength(10))
+      expect(replies()[9]).toMatchObject({
         id: 'expired-e2ee',
         ok: false,
         error: { code: 'unauthorized' }
@@ -270,8 +294,8 @@ describe('observer WebSocket request authorization', () => {
 
     store.revoke(issued.id)
     send(encrypt(JSON.stringify({ id: 'revoked-e2ee', method: 'observer.runtimeIdentity' }), key))
-    await vi.waitFor(() => expect(replies()).toHaveLength(10))
-    expect(replies()[9]).toMatchObject({
+    await vi.waitFor(() => expect(replies()).toHaveLength(11))
+    expect(replies()[10]).toMatchObject({
       id: 'revoked-e2ee',
       ok: false,
       error: { code: 'unauthorized' }
