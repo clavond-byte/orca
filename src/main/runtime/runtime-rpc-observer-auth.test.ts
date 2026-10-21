@@ -28,13 +28,15 @@ describe('observer WebSocket request authorization', () => {
     const dir = mkdtempSync(join(tmpdir(), 'orca-observer-e2ee-'))
     directories.push(dir)
     const store = new ObserverCredentialStore(dir)
-    const issued = store.issue('worktree-a')
+    const worktreeLocator = 'repo-id::/private/worktree'
+    const issued = store.issue(worktreeLocator, 'instance-a')
     const serverKeys = generateKeyPair()
     const clientKeys = generateKeyPair()
     const mutation = vi.fn()
     const runtime = new OrcaRuntimeService()
-    runtime.mobileSessionTabsByWorktree.set('worktree-a', {
-      worktree: 'worktree-a',
+    runtime.mobileSessionTabsByWorktree.set(worktreeLocator, {
+      worktree: worktreeLocator,
+      worktreeInstanceId: 'instance-a',
       publicationEpoch: 'test-epoch',
       snapshotVersion: 3,
       activeGroupId: null,
@@ -118,7 +120,7 @@ describe('observer WebSocket request authorization', () => {
       id: 'inventory-e2ee',
       ok: true,
       result: {
-        worktreeId: 'worktree-a',
+        scopeId: issued.id,
         state: 'observed',
         knownSessionIds: ['session-a'],
         snapshotFreshness: 'unverified',
@@ -126,10 +128,65 @@ describe('observer WebSocket request authorization', () => {
       }
     })
     expect(JSON.stringify(replies()[1])).not.toContain('private title')
+    expect(JSON.stringify(replies()[1])).not.toContain(worktreeLocator)
     send(encrypt(JSON.stringify({ id: 'write-e2ee', method: 'test.mutate' }), key))
     await vi.waitFor(() => expect(replies()).toHaveLength(3))
     expect(replies()[2]).toMatchObject({ id: 'write-e2ee', ok: false })
     expect(mutation).not.toHaveBeenCalled()
+
+    const originalSnapshot = runtime.mobileSessionTabsByWorktree.get(worktreeLocator)!
+    runtime.mobileSessionTabsByWorktree.set(worktreeLocator, {
+      ...originalSnapshot,
+      worktreeInstanceId: 'replacement-instance',
+      tabs: [
+        {
+          type: 'agent-session',
+          id: 'replacement-tab',
+          title: 'replacement private title',
+          sessionId: 'replacement-session',
+          agent: 'codex',
+          isActive: true
+        }
+      ]
+    })
+    send(
+      encrypt(
+        JSON.stringify({ id: 'inventory-replaced', method: 'observer.sessionInventory' }),
+        key
+      )
+    )
+    await vi.waitFor(() => expect(replies()).toHaveLength(4))
+    expect(replies()[3]).toMatchObject({
+      id: 'inventory-replaced',
+      ok: true,
+      result: { scopeId: issued.id, state: 'unknown' }
+    })
+    expect(JSON.stringify(replies()[3])).not.toContain('replacement-session')
+
+    runtime.mobileSessionTabsByWorktree.set(worktreeLocator, {
+      ...originalSnapshot,
+      tabs: Array.from({ length: 10_000 }, (_, index) => ({
+        type: 'agent-session' as const,
+        id: `oversized-tab-${index}`,
+        title: 'private title',
+        sessionId: `oversized-session-${index}`,
+        agent: 'codex' as const,
+        isActive: false
+      }))
+    })
+    send(
+      encrypt(
+        JSON.stringify({ id: 'inventory-over-limit', method: 'observer.sessionInventory' }),
+        key
+      )
+    )
+    await vi.waitFor(() => expect(replies()).toHaveLength(5))
+    expect(replies()[4]).toMatchObject({
+      id: 'inventory-over-limit',
+      ok: true,
+      result: { scopeId: issued.id, state: 'unknown', reason: 'snapshot-over-limit' }
+    })
+    expect(JSON.stringify(replies()[4])).not.toContain('oversized-session')
 
     runtime.mobileSessionTabsByWorktree.set('worktree-b', {
       worktree: 'worktree-b',
@@ -149,27 +206,27 @@ describe('observer WebSocket request authorization', () => {
         }
       ]
     })
-    runtime.mobileSessionTabsByWorktree.delete('worktree-a')
+    runtime.mobileSessionTabsByWorktree.delete(worktreeLocator)
     send(
       encrypt(JSON.stringify({ id: 'inventory-unknown', method: 'observer.sessionInventory' }), key)
     )
-    await vi.waitFor(() => expect(replies()).toHaveLength(4))
-    expect(replies()[3]).toMatchObject({
+    await vi.waitFor(() => expect(replies()).toHaveLength(6))
+    expect(replies()[5]).toMatchObject({
       id: 'inventory-unknown',
       ok: true,
       result: {
-        worktreeId: 'worktree-a',
+        scopeId: issued.id,
         state: 'unknown',
         snapshotFreshness: 'unverified',
         coverage: 'published-agent-tabs-only'
       }
     })
-    expect(JSON.stringify(replies()[3])).not.toContain('foreign-session')
+    expect(JSON.stringify(replies()[5])).not.toContain('foreign-session')
 
     store.revoke(issued.id)
     send(encrypt(JSON.stringify({ id: 'revoked-e2ee', method: 'observer.runtimeIdentity' }), key))
-    await vi.waitFor(() => expect(replies()).toHaveLength(5))
-    expect(replies()[4]).toMatchObject({
+    await vi.waitFor(() => expect(replies()).toHaveLength(7))
+    expect(replies()[6]).toMatchObject({
       id: 'revoked-e2ee',
       ok: false,
       error: { code: 'unauthorized' }

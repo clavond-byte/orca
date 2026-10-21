@@ -14,6 +14,7 @@ type ObserverCredentialRow = {
   tokenHash: string
   createdAt: number
   worktreeId?: string
+  worktreeInstanceId?: string
   expiresAt?: number
 }
 
@@ -21,6 +22,7 @@ export type ObserverCredential = {
   id: string
   tokenHash: string
   worktreeId?: string
+  worktreeInstanceId?: string
   expiresAt?: number
 }
 
@@ -35,6 +37,10 @@ function validWorktreeId(value: unknown): value is string {
     }
   }
   return true
+}
+
+function validWorktreeInstanceId(value: unknown): value is string {
+  return typeof value === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(value)
 }
 
 function tokenHash(token: string): string {
@@ -55,8 +61,9 @@ function validRow(value: unknown): value is ObserverCredentialRow {
     Number.isSafeInteger(row.createdAt) &&
     row.createdAt > 0 &&
     (row.worktreeId === undefined
-      ? row.expiresAt === undefined
+      ? row.expiresAt === undefined && row.worktreeInstanceId === undefined
       : validWorktreeId(row.worktreeId) &&
+        validWorktreeInstanceId(row.worktreeInstanceId) &&
         typeof row.expiresAt === 'number' &&
         Number.isSafeInteger(row.expiresAt) &&
         row.expiresAt > row.createdAt)
@@ -116,16 +123,23 @@ export class ObserverCredentialStore {
   }
 
   /** The bearer is returned once, only after its hash is durably stored. */
-  issue(worktreeId?: string): { id: string; token: string } {
-    if (worktreeId !== undefined && !validWorktreeId(worktreeId)) {
-      throw new Error('Invalid observer worktree scope')
+  issue(worktreeId?: string, worktreeInstanceId?: string): { id: string; token: string } {
+    if (
+      worktreeId === undefined
+        ? worktreeInstanceId !== undefined
+        : !validWorktreeId(worktreeId) || !validWorktreeInstanceId(worktreeInstanceId)
+    ) {
+      throw new Error('Invalid observer worktree scope or instance')
     }
     return this.withWriteLock(() => {
       const rows = this.readRows()
       const id = randomUUID()
       const token = `${TOKEN_PREFIX}${randomBytes(32).toString('base64url')}`
       const createdAt = Date.now()
-      const scope = worktreeId === undefined ? {} : { worktreeId, expiresAt: createdAt + 3_600_000 }
+      const scope =
+        worktreeId === undefined
+          ? {}
+          : { worktreeId, worktreeInstanceId, expiresAt: createdAt + 3_600_000 }
       if (
         !writeDurableSecureJsonFile(this.path, {
           version: 1,
@@ -173,6 +187,7 @@ export class ObserverCredentialStore {
         id: row.id,
         tokenHash: row.tokenHash,
         worktreeId: row.worktreeId,
+        worktreeInstanceId: row.worktreeInstanceId,
         expiresAt: row.expiresAt
       }
     } catch {

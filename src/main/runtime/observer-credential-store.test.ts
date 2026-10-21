@@ -45,10 +45,15 @@ describe('separate observer credentials', () => {
     const clock = vi.spyOn(Date, 'now').mockReturnValue(now)
     try {
       expect(() => store.issue('')).toThrow('Invalid observer worktree scope')
-      const issued = store.issue('worktree-a')
+      expect(() => store.issue('worktree-a')).toThrow('Invalid observer worktree scope or instance')
+      expect(() => store.issue(undefined, 'instance-a')).toThrow(
+        'Invalid observer worktree scope or instance'
+      )
+      const issued = store.issue('worktree-a', 'instance-a')
       expect(store.authenticate(issued.token)).toMatchObject({
         id: issued.id,
         worktreeId: 'worktree-a',
+        worktreeInstanceId: 'instance-a',
         expiresAt: now + 3_600_000
       })
       clock.mockReturnValue(now + 3_600_000)
