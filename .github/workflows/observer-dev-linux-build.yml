@@ -29,7 +29,6 @@ jobs:
           test "$(git rev-parse HEAD)" = 88c5e868f738cea69633483a03e0096257f6effb
           test "$(git rev-parse 'HEAD^{tree}')" = 8c39c7563786e021762f7a8335478e6673afb431
           test -z "$(git status --porcelain --untracked-files=no)"
-          test "$(node config/scripts/build-orcad-prebuilds.mjs --print-slot)" = linux-x64-glibc
           node --version
       - uses: ./.github/actions/install-node-dependencies
         with:
@@ -38,6 +37,8 @@ jobs:
           cache-pnpm-store: 'false'
           cache-pnpm-verification: 'false'
           persist-native-cache: 'false'
+      - name: Assert installed target toolchain
+        run: test "$(node config/scripts/build-orcad-prebuilds.mjs --print-slot)" = linux-x64-glibc
       - uses: ./.github/actions/build-mobile-web-bundle
       - name: Build pinned Linux x64 prebuild
         run: |
