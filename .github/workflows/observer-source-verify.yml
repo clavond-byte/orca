@@ -49,7 +49,7 @@ jobs:
         run: pnpm run verify:rpc-params-catalog
       - name: Exercise observer scope, catalog, expiry and path guards
         run: |
-          pnpm exec vitest run \
+          pnpm exec vitest run --config config/vitest.config.ts \
             config/scripts/observer-credential-path.test.ts \
             src/main/persistence/loading-store/worktree-meta-alias-projection.test.ts \
             src/main/runtime/observer-credential-store.test.ts \

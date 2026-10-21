@@ -118,7 +118,7 @@ export abstract class RuntimeWorkspaceCatalog extends OrcaRuntimeWithReadKittyFi
     if (
       currentOwners.length !== 1 ||
       currentOwners[0].path !== repo.path ||
-      currentOwners[0].worktreesPath !== repo.worktreesPath ||
+      currentOwners[0].worktreeBasePath !== repo.worktreeBasePath ||
       after?.state !== 'unique' ||
       after.instanceId !== before.instanceId
     ) {
