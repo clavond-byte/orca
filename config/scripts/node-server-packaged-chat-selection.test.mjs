@@ -40,3 +40,20 @@ it('runs a real structured chat on Linux from the built desktop template', () =>
     'src/main/orcad/orcad-packaged-structured-chat.integration.test.ts'
   )
 })
+
+it('builds the template before testing the packaged server in the observer workflow', () => {
+  const workflow = parse(readFileSync('.github/workflows/observer-dev-linux-build.yml', 'utf8'))
+  const steps = workflow.jobs.build.steps
+  const template = steps.find((step) =>
+    step.run?.includes('build-orcad-template.mjs --targets linux-x64-glibc')
+  )
+  const smoke = steps.find((step) => step.name === 'Smoke packaged server')
+
+  expect(template.run).toBe(
+    'node config/scripts/build-orcad-template.mjs --targets linux-x64-glibc'
+  )
+  expect(smoke.run).toContain(
+    'pnpm test:node-server --artifact src/main/orcad/orcad-packaged-structured-chat.integration.test.ts'
+  )
+  expect(steps.indexOf(smoke)).toBeGreaterThan(steps.indexOf(template))
+})
