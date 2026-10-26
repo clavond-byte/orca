@@ -531,6 +531,19 @@ describe('PR workflow parallelism', () => {
     }
   })
 
+  it('fetches canonical release tags when running from a repository copy', () => {
+    const steps = workflow.jobs['cross-version-wire'].steps
+    const fetchTags = steps.find((step) => step.name === 'Fetch canonical release tags')
+    const protocolCheckIndex = steps.findIndex(
+      (step) => step.name === 'Daemon protocol crossing against newest release'
+    )
+
+    expect(fetchTags.if).toBe("github.repository != 'stablyai/orca'")
+    expect(fetchTags.run).toContain('https://github.com/stablyai/orca.git')
+    expect(fetchTags.run).toContain("'+refs/tags/v*:refs/tags/v*'")
+    expect(steps.indexOf(fetchTags)).toBeLessThan(protocolCheckIndex)
+  })
+
   it('keeps advisory unit-selection evidence off the gate', () => {
     // It is continue-on-error, so it can never fail a PR. Living inside unit-tests.yml made a
     // caller's `needs: test` wait for it anyway, holding verify ~36s past the last shard. Pinned
