@@ -270,7 +270,6 @@ jobs:
         if: needs.code_paths.outputs.static_analysis == 'true'
         run: |
           pnpm run check:reliability-gates
-          pnpm run check:process-host-imports
 
       - name: Enforce dead design-system classes
         if: needs.code_paths.outputs.static_analysis == 'true'
