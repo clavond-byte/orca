@@ -279,6 +279,42 @@ describe('paired runtime clients', () => {
   })
 })
 
+describe('runtime observer scope', () => {
+  const observer: RpcCallerScope = { kind: 'runtime-observer' }
+
+  it('receives only the fixed runtime identity projection', async () => {
+    const response = await dispatchAs(observer, 'observer.runtimeIdentity')
+    expect(response).toMatchObject({
+      ok: true,
+      result: {
+        runtimeId: expect.any(String),
+        appVersion: expect.any(String)
+      }
+    })
+    if (!response.ok || typeof response.result !== 'object' || response.result === null) {
+      throw new Error('Expected object result')
+    }
+    expect(Object.keys(response.result).sort()).toEqual([
+      'appVersion',
+      'runtimeId',
+      'startedAt'
+    ])
+  })
+
+  it.each([
+    'status.get',
+    'terminal.send',
+    'agent.launch',
+    'files.read',
+    'settings.update',
+    'computer.click',
+    'observer.methodFromTheFuture'
+  ])('refuses %s before dispatch', async (method) => {
+    const response = await dispatchAs(observer, method, {})
+    expect(errorCode(response)).toBe('forbidden')
+  })
+})
+
 describe('the owner', () => {
   it('reaches desktop control unscoped', async () => {
     const response = await dispatchAs(undefined, 'computer.click', {})

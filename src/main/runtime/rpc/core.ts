@@ -65,6 +65,12 @@ export type LegacyCoordinatorAuthorityProof = Readonly<{
 
 export type RpcContext = {
   runtime: OrcaRuntimeService
+  /** Bound by the observer credential at transport admission, never read from request params. */
+  observerWorktreeId?: string
+  /** Immutable catalog identity expected by the observer credential. */
+  observerWorktreeInstanceId?: string
+  /** Opaque credential-local identifier; never expose the worktree locator. */
+  observerScopeId?: string
   // Why: lets long-poll handlers release immediately on client disconnect instead of running down timeoutMs. See design doc §3.1.
   signal?: AbortSignal
   // Why: per-WebSocket key so the server reaps a closing socket's subscriptions without touching sibling sockets sharing the deviceToken.

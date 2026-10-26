@@ -223,6 +223,37 @@ function snapshot(store: InstanceType<typeof Store>) {
 }
 
 describe('worktree meta alias projection', () => {
+  it('peeks a unique instance without migrating legacy rows or choosing ambiguous aliases', () => {
+    const fixture = buildFixture()
+    const legacyId = worktreeId(TWIN_ROWS + 5)
+    fixture.state.worktreeMeta[legacyId] = meta(TWIN_ROWS + 5, seededRandom(5), {
+      instanceId: undefined,
+      hostId: undefined
+    })
+    const dataFile = tempDataFile()
+    writeFixture(dataFile, fixture.state)
+    openStore(dataFile).flush()
+    const store = openStore(dataFile)
+    store.flush()
+    const before = structuredClone(store.getAllWorktreeMeta())
+    const beforeFile = readPersistedStateJson(dataFile)
+
+    expect(store.peekUniqueWorktreeInstanceForHost(worktreeId(0), LOCAL)).toEqual({
+      state: 'unique',
+      instanceId: 'instance-0'
+    })
+    expect(store.peekUniqueWorktreeInstanceForHost(worktreeId(TWIN_ROWS + 4), LOCAL)).toEqual({
+      state: 'ambiguous'
+    })
+    expect(store.peekUniqueWorktreeInstanceForHost(worktreeId(TWIN_ROWS + 3), LOCAL)).toEqual({
+      state: 'missing'
+    })
+    expect(store.peekUniqueWorktreeInstanceForHost(legacyId, LOCAL)).toEqual({ state: 'missing' })
+    expect(store.getAllWorktreeMeta()).toEqual(before)
+    store.flush()
+    expect(readPersistedStateJson(dataFile)).toBe(beforeFile)
+  })
+
   it('round-trips every corpus shape and writes only the identity rows no locator regenerates', () => {
     const fixture = buildFixture()
     const dataFile = tempDataFile()
