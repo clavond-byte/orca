@@ -1,4 +1,4 @@
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -11,7 +11,8 @@ import {
   hardenExistingSecureFile,
   hardenSecurePath,
   isUnreadableError,
-  writeSecureFile
+  writeSecureFile,
+  writeSecureFileNoClobber
 } from './secure-file'
 
 const posixModeIt = process.platform === 'win32' ? it.skip : it
@@ -652,6 +653,18 @@ describe('hardenSecurePath', () => {
     expect(syncTargets.filter((entry) => entry === userDataPath)).toHaveLength(0)
     // The final published target's ACL must have been applied via the synchronous path.
     expect(getHardenAclCalls().map(getAclTarget)).not.toContain(targetPath)
+  })
+
+  it('does not replace a bearer destination created after preflight', () => {
+    Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' })
+    const userDataPath = mkdtempSync(join(tmpdir(), 'orca-secure-file-'))
+    tempDirs.push(userDataPath)
+    const targetPath = join(userDataPath, 'bearer.txt')
+    writeFileSync(targetPath, 'competing output')
+    expect(() => writeSecureFileNoClobber(targetPath, 'secret bearer')).toThrow()
+    expect(readFileSync(targetPath, 'utf8')).toBe('competing output')
+    expect(writeSecureFileNoClobber(join(userDataPath, 'new-bearer.txt'), 'secret bearer')).toBe(true)
+    expect(readFileSync(join(userDataPath, 'new-bearer.txt'), 'utf8')).toBe('secret bearer')
   })
 
   // Nit #1 (review): the synchronous file path must cache as hardened ONLY on confirmed

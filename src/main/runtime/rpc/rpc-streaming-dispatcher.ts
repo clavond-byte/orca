@@ -153,6 +153,9 @@ export class RpcStreamingDispatcher {
           const legacyCoordinatorRunId = legacyCoordinator?.revalidate()
           return method.handler(effectiveParams, {
             runtime,
+            observerWorktreeId: options?.observerWorktreeId,
+            observerWorktreeInstanceId: options?.observerWorktreeInstanceId,
+            observerScopeId: options?.observerScopeId,
             signal: options?.signal,
             requestId: request.id,
             connectionId: options?.connectionId,
@@ -216,6 +219,9 @@ export class RpcStreamingDispatcher {
         params,
         {
           runtime,
+          observerWorktreeId: options?.observerWorktreeId,
+          observerWorktreeInstanceId: options?.observerWorktreeInstanceId,
+          observerScopeId: options?.observerScopeId,
           signal: options?.signal,
           requestId: request.id,
           connectionId: options?.connectionId,

@@ -1,4 +1,6 @@
 import { installRuntimeLinearCommandSurface } from './runtime-linear-command-surface'
+import { splitWorktreeIdForFilesystem } from '../../shared/worktree/id'
+import { getRepoExecutionHostId, LOCAL_EXECUTION_HOST_ID } from '../../shared/execution-host'
 import { OrcaRuntimeWithMigrationCatalog } from './orca-runtime-migration-catalog'
 import type { RuntimeCommandSurfaceHost } from './orca-runtime-core'
 import type {
@@ -23,6 +25,31 @@ class OrcaRuntimeService extends OrcaRuntimeWithMigrationCatalog {
     // module registers the generation bump at load; a headless host never loads it.
     registerDetectedWorktreeScanInvalidation()
     registerWorktreeChangeInvalidator((repoId) => this.invalidateWorktreeCatalog(repoId))
+  }
+
+  /** Retained logical identity only; never scans disk or migrates metadata. */
+  getLogicalLocalObserverWorktreeInstanceId(worktreeId: string): string | null {
+    const parsed = splitWorktreeIdForFilesystem(worktreeId)
+    if (!this.store || !parsed?.repoId || !parsed.worktreePath) {
+      return null
+    }
+    const owners = this.store.getRepos().filter(
+      (repo) => repo.id === parsed.repoId &&
+        getRepoExecutionHostId(repo) === LOCAL_EXECUTION_HOST_ID
+    )
+    if (owners.length !== 1) {
+      return null
+    }
+    const instance = this.store.peekUniqueWorktreeInstanceForHost?.(
+      worktreeId,
+      LOCAL_EXECUTION_HOST_ID
+    )
+    return instance?.state === 'unique' ? instance.instanceId : null
+  }
+
+  /** Already-published in-memory tab view; no filesystem or process census. */
+  getLogicalObserverSessionSnapshot(worktreeId: string) {
+    return this.mobileSessionTabsByWorktree.get(worktreeId)
   }
 
   /** Whether a window owns the layout and can show a launch's tab ahead of its process. */
