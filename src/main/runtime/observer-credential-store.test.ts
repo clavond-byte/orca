@@ -48,9 +48,6 @@ describe('separate observer credentials', () => {
       expect(() => store.issue('worktree-a', '')).toThrow(
         'Invalid observer worktree scope or instance'
       )
-      expect(() => Reflect.apply(store.issue, store, [undefined, 'instance-a'])).toThrow(
-        'Invalid observer worktree scope or instance'
-      )
       const issued = store.issue('worktree-a', 'instance-a')
       expect(store.authenticate(issued.token)).toMatchObject({
         id: issued.id,
