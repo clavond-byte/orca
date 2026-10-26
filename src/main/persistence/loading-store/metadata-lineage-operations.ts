@@ -28,7 +28,6 @@ import {
   getWorktreeMetaForHost as getWorktreeMetaForHostOperation,
   migrateWorktreeMetadataLocator,
   peekUniqueWorktreeInstanceForHost as peekUniqueWorktreeInstanceForHostOperation,
-  type UniqueWorktreeInstanceLookup,
   removeWorktreeMetadataForHost,
   setWorktreeMetaForHost as setWorktreeMetaForHostOperation,
   WORKTREE_METADATA_DOMAINS
