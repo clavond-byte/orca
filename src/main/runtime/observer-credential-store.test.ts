@@ -141,7 +141,7 @@ describe('separate observer credentials', () => {
     const path = join(dir, 'observer-credentials.v1.json')
     const saved = JSON.parse(readFileSync(path, 'utf8')) as {
       version: number
-      credentials: Array<{ createdAt: number; expiresAt: number }>
+      credentials: { createdAt: number; expiresAt: number }[]
     }
     saved.credentials[0]!.expiresAt = saved.credentials[0]!.createdAt + 3_600_001
     writeFileSync(path, JSON.stringify(saved))

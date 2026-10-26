@@ -124,7 +124,7 @@ export function writeDurableSecureJsonFile(targetPath: string, value: unknown): 
 export function writeSecureFile(
   targetPath: string,
   contents: string,
-  options: { durable?: boolean } = {}
+  options: { durable?: boolean; noClobber?: boolean } = {}
 ): boolean {
   const dir = dirname(targetPath)
   if (!existsSync(dir)) {
@@ -137,17 +137,30 @@ export function writeSecureFile(
   try {
     writeFileSync(tmpFile, contents, {
       encoding: 'utf-8',
-      mode: 0o600
+      mode: 0o600,
+      flag: options.noClobber ? 'wx' : 'w'
     })
     if (options.durable) {
       fsyncFileSync(tmpFile)
     }
     // Why: writeFileSync mode is a no-op on Windows, so restrict the credential's ACL synchronously before the rename publishes it under inherited ACLs.
     const stagedOutcome = applySecurePathRestriction(tmpFile, false, process.platform, true)
-    renameSync(tmpFile, targetPath)
+    if (options.noClobber && stagedOutcome !== 'applied') {
+      throw new Error('Bearer output could not be secured')
+    }
+    if (options.noClobber) {
+      linkSync(tmpFile, targetPath)
+      rmSync(tmpFile, { force: true })
+    } else {
+      renameSync(tmpFile, targetPath)
+    }
     // Why: these hold auth credentials, so the published path must stay current-user only; cache only on confirmed success so failures retry.
     // The staged file's protected DACL survives the rename, so this pass usually just verifies it.
     const publishedOutcome = applySecurePathRestriction(targetPath, false, process.platform, true)
+    if (options.noClobber && publishedOutcome !== 'applied') {
+      rmSync(targetPath, { force: true })
+      throw new Error('Bearer output could not be secured')
+    }
     if (publishedOutcome === 'applied') {
       rememberHardenedPath(targetPath, false)
     }
@@ -163,33 +176,7 @@ export function writeSecureFile(
 
 /** Publish a bearer only when the destination is still absent. */
 export function writeSecureFileNoClobber(targetPath: string, contents: string): boolean {
-  const dir = dirname(targetPath)
-  if (!existsSync(dir)) {
-    mkdirSync(dir, { recursive: true, mode: 0o700 })
-  }
-  hardenSecurePathOnce(dir, true)
-  const tmpFile = `${targetPath}.${process.pid}.${Date.now()}.${randomBytes(4).toString('hex')}.tmp`
-  try {
-    writeFileSync(tmpFile, contents, { encoding: 'utf-8', mode: 0o600, flag: 'wx' })
-    fsyncFileSync(tmpFile)
-    const stagedOutcome = applySecurePathRestriction(tmpFile, false, process.platform, true)
-    if (stagedOutcome !== 'applied') {
-      throw new Error('Bearer output could not be secured')
-    }
-    // link is an atomic create-if-absent on the same filesystem. rename would
-    // replace a file created after the caller's preflight check.
-    linkSync(tmpFile, targetPath)
-    const publishedOutcome = applySecurePathRestriction(targetPath, false, process.platform, true)
-    if (publishedOutcome !== 'applied') {
-      rmSync(targetPath, { force: true })
-      throw new Error('Bearer output could not be secured')
-    }
-    rememberHardenedPath(targetPath, false)
-    bestEffortFsyncDirectorySync(dir)
-    return true
-  } finally {
-    rmSync(tmpFile, { force: true })
-  }
+  return writeSecureFile(targetPath, contents, { durable: true, noClobber: true })
 }
 
 function fsyncPathSync(path: string, flags: 'r' | 'r+'): void {

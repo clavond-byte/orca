@@ -30,12 +30,16 @@ class OrcaRuntimeService extends OrcaRuntimeWithMigrationCatalog {
   /** Retained logical identity only; never scans disk or migrates metadata. */
   getLogicalLocalObserverWorktreeInstanceId(worktreeId: string): string | null {
     const parsed = splitWorktreeIdForFilesystem(worktreeId)
-    if (!this.store || !parsed?.repoId || !parsed.worktreePath) return null
+    if (!this.store || !parsed?.repoId || !parsed.worktreePath) {
+      return null
+    }
     const owners = this.store.getRepos().filter(
       (repo) => repo.id === parsed.repoId &&
         getRepoExecutionHostId(repo) === LOCAL_EXECUTION_HOST_ID
     )
-    if (owners.length !== 1) return null
+    if (owners.length !== 1) {
+      return null
+    }
     const instance = this.store.peekUniqueWorktreeInstanceForHost?.(
       worktreeId,
       LOCAL_EXECUTION_HOST_ID

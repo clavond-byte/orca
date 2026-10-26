@@ -94,7 +94,9 @@ export class MobileSocketWiring {
   }
 
   dispose(): void {
-    for (const channel of this.channels.values()) channel.destroy()
+    for (const channel of this.channels.values()) {
+      channel.destroy()
+    }
     this.channels.clear()
     this.authenticatedSockets.clear()
     this.connectionIds.clear()
