@@ -10,8 +10,7 @@ import { DeviceRegistry } from './device-registry'
 import { ObserverCredentialStore } from './observer-credential-store'
 import { defineMethod } from './rpc/core'
 import { RUNTIME_OBSERVER_METHODS } from './rpc/methods/runtime-observer'
-import type { AuthenticatedMobileSocket } from './rpc/mobile-socket-wiring'
-import type { MobileSocketTransport } from './rpc/mobile-socket-wiring'
+import type { AuthenticatedMobileSocket, MobileSocketTransport } from './rpc/mobile-socket-wiring'
 
 const directories: string[] = []
 const servers: OrcaRuntimeRpcServer[] = []
