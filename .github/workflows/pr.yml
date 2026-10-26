@@ -945,8 +945,7 @@ jobs:
 
     steps:
       # Why fetch-depth 0: the harness extracts the newest release tag to skew
-      # current code against it. The default shallow clone has no tags, which is
-      # why this cannot ride along in the sharded `test` job.
+      # current code against it. Forks do not carry stablyai/orca's release tags.
       - name: Checkout
         uses: actions/checkout@v6
         with:
@@ -956,6 +955,9 @@ jobs:
           fetch-depth: 0
           filter: blob:none
           persist-credentials: false
+
+      - name: Fetch upstream release tags
+        run: git fetch --no-tags https://github.com/stablyai/orca.git '+refs/tags/v*:refs/tags/v*'
 
       - uses: ./.github/actions/install-node-dependencies
         with:
