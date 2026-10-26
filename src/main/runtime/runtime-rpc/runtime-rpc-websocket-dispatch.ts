@@ -60,15 +60,15 @@ export class RuntimeRpcWebSocketDispatch extends RuntimeRpcRequestAdmission {
       typeof (request as Record<string, unknown>).deviceToken === 'string'
         ? ((request as Record<string, unknown>).deviceToken as string)
         : null
-    const boundToken = authenticatedDeviceToken ?? authenticatedSocket?.device.deviceToken ?? null
+    const boundToken = authenticatedDeviceToken ?? authenticatedSocket?.device?.deviceToken ?? null
     if (boundToken && requestToken && requestToken !== boundToken) {
       reply(JSON.stringify(this.buildError(request.id, 'unauthorized', 'Device token mismatch')))
       return
     }
     // Why: E2EE already authenticated the channel; authorize by that bound identity, not a repeated request field.
     const token = boundToken ?? requestToken
-    if (authenticatedSocket?.device.observerCredentialId) {
-      const observerId = authenticatedSocket.device.observerCredentialId
+    const observerId = authenticatedSocket?.device?.observerCredentialId
+    if (observerId && authenticatedSocket) {
       // The marker came from E2EE admission, not request JSON. Re-read the separate store on
       // every request so revocation applies even to a socket that has already authenticated.
       const observer =
