@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto'
 import type { WebSocket } from 'ws'
 import type { DeviceEntry, DeviceRegistry } from '../device-registry'
+import type { ObserverCredentialStore } from '../observer-credential-store'
 import type { E2EEKeypair } from '../e2ee-keypair'
 import { E2EEChannel, type E2EEAuthenticatedDevice } from './e2ee-channel'
 import { createMobileE2EEOutboundMemoryBudget } from './mobile-e2ee-outbound-memory-budget'
@@ -43,6 +44,7 @@ export type AuthenticatedMobileSocket = {
 
 type MobileSocketWiringOptions = {
   deviceRegistry: DeviceRegistry
+  observerCredentialStore?: ObserverCredentialStore
   e2eeKeypair: E2EEKeypair
   onText: (
     socket: AuthenticatedMobileSocket,
@@ -67,6 +69,7 @@ function toAuthenticatedDevice(device: DeviceEntry): E2EEAuthenticatedDevice {
 
 export class MobileSocketWiring {
   private readonly deviceRegistry: DeviceRegistry
+  private readonly observerCredentialStore: ObserverCredentialStore | null
   private readonly e2eeKeypair: E2EEKeypair
   private readonly onText: MobileSocketWiringOptions['onText']
   private readonly onBinary: MobileSocketWiringOptions['onBinary']
@@ -81,12 +84,21 @@ export class MobileSocketWiring {
 
   constructor(options: MobileSocketWiringOptions) {
     this.deviceRegistry = options.deviceRegistry
+    this.observerCredentialStore = options.observerCredentialStore ?? null
     this.e2eeKeypair = options.e2eeKeypair
     this.onText = options.onText
     this.onBinary = options.onBinary
     this.onClose = options.onClose
     this.onReady = options.onReady
     this.onUnpairedDeviceAuthFailure = options.onUnpairedDeviceAuthFailure
+  }
+
+  dispose(): void {
+    for (const channel of this.channels.values()) channel.destroy()
+    this.channels.clear()
+    this.authenticatedSockets.clear()
+    this.connectionIds.clear()
+    this.transports.clear()
   }
 
   attachTransport(
@@ -140,6 +152,7 @@ export class MobileSocketWiring {
     if (!channel) {
       const connectionId = randomBytes(8).toString('hex')
       this.connectionIds.set(ws, connectionId)
+      let attemptedObserverAuth = false
       channel = new E2EEChannel(ws, {
         serverSecretKey: this.e2eeKeypair.secretKey,
         transportContext:
@@ -149,6 +162,25 @@ export class MobileSocketWiring {
         requireV2: metadata.transport === 'relay',
         outboundMemoryBudget: this.outboundMemoryBudget,
         resolveAuthenticatedDevice: (token) => {
+          if (token.startsWith('orca-observer-v1-')) {
+            attemptedObserverAuth = true
+            // Observer bearers never enter the old device registry and never cross a relay.
+            const observer =
+              metadata.transport === 'direct'
+                ? this.observerCredentialStore?.authenticate(token)
+                : null
+            return observer
+              ? {
+                  deviceId: `observer:${observer.id}`,
+                  scope: 'runtime',
+                  clientId: `observer:${observer.id}`,
+                  callerFingerprint: observer.tokenHash,
+                  credentialRevision: 1,
+                  deviceToken: token,
+                  observerCredentialId: observer.id
+                }
+              : null
+          }
           const device = this.deviceRegistry.validateToken(token)
           if (!device) {
             return null
@@ -180,11 +212,15 @@ export class MobileSocketWiring {
           this.authenticatedSockets.set(ws, socket)
           transport.setClientId(ws, device.deviceToken)
           // Why: deferred — the client's e2ee_authenticated must not wait on a secure-file rewrite.
-          this.deviceRegistry.updateLastSeenDeferred(device.deviceId)
-          this.onReady?.(socket)
+          if (!device.observerCredentialId) {
+            this.deviceRegistry.updateLastSeenDeferred(device.deviceId)
+            this.onReady?.(socket)
+          }
         },
         onError: (code, reason) => {
-          const reportUnpairedDevice = code === 4001 && reason === 'Unauthorized'
+          // A denied observer bearer must not change ordinary device pairing state.
+          const reportUnpairedDevice =
+            code === 4001 && reason === 'Unauthorized' && !attemptedObserverAuth
           this.channels.get(ws)?.destroy()
           this.channels.delete(ws)
           ws.close(code, reason)
@@ -206,7 +242,7 @@ export class MobileSocketWiring {
       })
       channel.onBinaryMessage((bytes) => {
         const socket = this.authenticatedSockets.get(ws)
-        if (socket) {
+        if (socket && !socket.device.observerCredentialId) {
           this.onBinary(socket, bytes)
         }
       })

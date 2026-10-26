@@ -136,6 +136,9 @@ export class RpcDispatcher {
         params: parsedParams.value,
         context: {
           runtime: this.runtime,
+          observerWorktreeId: options?.observerWorktreeId,
+          observerWorktreeInstanceId: options?.observerWorktreeInstanceId,
+          observerScopeId: options?.observerScopeId,
           signal: options?.signal,
           connectionId: options?.connectionId,
           // Session tabs always need this fence. COMPAT(terminal request-addressed unsubscribe): terminal only for phones without `requestId`.

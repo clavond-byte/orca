@@ -4,6 +4,7 @@ import {
   closeSync,
   existsSync,
   fsyncSync,
+  linkSync,
   mkdirSync,
   openSync,
   renameSync,
@@ -157,6 +158,37 @@ export function writeSecureFile(
   } catch (error) {
     rmSync(tmpFile, { force: true })
     throw error
+  }
+}
+
+/** Publish a bearer only when the destination is still absent. */
+export function writeSecureFileNoClobber(targetPath: string, contents: string): boolean {
+  const dir = dirname(targetPath)
+  if (!existsSync(dir)) {
+    mkdirSync(dir, { recursive: true, mode: 0o700 })
+  }
+  hardenSecurePathOnce(dir, true)
+  const tmpFile = `${targetPath}.${process.pid}.${Date.now()}.${randomBytes(4).toString('hex')}.tmp`
+  try {
+    writeFileSync(tmpFile, contents, { encoding: 'utf-8', mode: 0o600, flag: 'wx' })
+    fsyncFileSync(tmpFile)
+    const stagedOutcome = applySecurePathRestriction(tmpFile, false, process.platform, true)
+    if (stagedOutcome !== 'applied') {
+      throw new Error('Bearer output could not be secured')
+    }
+    // link is an atomic create-if-absent on the same filesystem. rename would
+    // replace a file created after the caller's preflight check.
+    linkSync(tmpFile, targetPath)
+    const publishedOutcome = applySecurePathRestriction(targetPath, false, process.platform, true)
+    if (publishedOutcome !== 'applied') {
+      rmSync(targetPath, { force: true })
+      throw new Error('Bearer output could not be secured')
+    }
+    rememberHardenedPath(targetPath, false)
+    bestEffortFsyncDirectorySync(dir)
+    return true
+  } finally {
+    rmSync(tmpFile, { force: true })
   }
 }
 
