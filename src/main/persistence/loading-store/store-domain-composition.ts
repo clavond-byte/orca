@@ -30,10 +30,8 @@ import {
   SessionSnapshotOperations,
   installSessionSnapshotOperationsContext
 } from './session-snapshot-operations'
-import {
-  MetadataLineageOperations,
-  installMetadataLineageOperationsContext
-} from './metadata-lineage-operations'
+import { MetadataLineageOperations } from './metadata-lineage-operations'
+import { installMetadataLineageOperationsContext } from './metadata-lineage-operations-context'
 import {
   ProjectCollectionOperations,
   installProjectCollectionOperationsContext

@@ -1,12 +1,9 @@
 import { randomBytes } from 'node:crypto'
 import {
   chmodSync,
-  closeSync,
   existsSync,
-  fsyncSync,
   linkSync,
   mkdirSync,
-  openSync,
   renameSync,
   rmSync,
   statSync,
@@ -28,6 +25,9 @@ import {
   resetSecureFileWindowsUserSidForTests,
   restrictWindowsPathSync
 } from './secure-path-windows-acl'
+import { bestEffortFsyncDirectorySync, fsyncFileSync } from './secure-file-durability'
+
+export { bestEffortFsyncDirectorySync, fsyncFileSync } from './secure-file-durability'
 
 type HardenedPathCacheEntry = {
   isDirectory: boolean
@@ -39,8 +39,6 @@ type HardenedPathCacheEntry = {
   mtimeMs: number
   birthtimeMs: number
 }
-
-const UNSUPPORTED_DIRECTORY_FSYNC_CODES = new Set(['EINVAL', 'ENOTSUP', 'EOPNOTSUPP'])
 
 // Why: hardening spawns icacls synchronously (once when the DACL already verifies, four times when it must be rewritten), so cache idempotent re-hardens per process.
 let hardenedPathsThisProcess = new SecurePathHardeningCache<HardenedPathCacheEntry>(
@@ -189,37 +187,6 @@ export function writeSecureFileNoClobber(targetPath: string, contents: string): 
     return true
   } finally {
     rmSync(tmpFile, { force: true })
-  }
-}
-
-function fsyncPathSync(path: string, flags: 'r' | 'r+'): void {
-  const descriptor = openSync(path, flags)
-  try {
-    fsyncSync(descriptor)
-  } finally {
-    closeSync(descriptor)
-  }
-}
-
-export function fsyncFileSync(path: string): void {
-  // FlushFileBuffers requires a write-capable handle on Windows.
-  fsyncPathSync(path, process.platform === 'win32' ? 'r+' : 'r')
-}
-
-export function bestEffortFsyncDirectorySync(directory: string): void {
-  if (process.platform === 'win32') {
-    return
-  }
-  try {
-    fsyncPathSync(directory, 'r')
-  } catch (error) {
-    if (
-      error instanceof Error &&
-      UNSUPPORTED_DIRECTORY_FSYNC_CODES.has((error as NodeJS.ErrnoException).code ?? '')
-    ) {
-      return
-    }
-    throw error
   }
 }
 

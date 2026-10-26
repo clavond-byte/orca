@@ -6,14 +6,18 @@ import type { Repo } from '../../../shared/repo-types'
 import { LOCAL_EXECUTION_HOST_ID, type ExecutionHostId } from '../../../shared/execution-host'
 import { getRepoIdFromWorktreeId } from '../../../shared/worktree/id'
 import { hasWorktreeRemovalRepoOwnerOnOtherHost } from '../../worktree-removal-repo-owner'
-import { folderWorkspaceKey, worktreeWorkspaceKey } from '../../../shared/workspace-scope'
+import { worktreeWorkspaceKey } from '../../../shared/workspace-scope'
 import {
   workspaceSessionOwnerPartitionForHost,
   workspaceSessionPartitionIdsForHost
 } from '../restoring-sessions/session-owner-removal'
-import type { StoreRuntimeState } from './store-runtime-state'
 import type { WriteSchedulingOperations } from './write-scheduling'
 import type { SessionHostPartitionOperations } from './session-host-partitions'
+import {
+  metadataLineageOperationsContext,
+  type MetadataLineageOperationsContext,
+  type MetadataLineageOperationsRuntime
+} from './metadata-lineage-operations-context'
 import { invalidateLocalWorktreeMetadataPruneInputs } from '../../local-worktree-metadata-prune-gate'
 import { scheduleSave } from './write-scheduling'
 import {
@@ -41,15 +45,6 @@ import {
   type LocalWorktreeMetadataPruneExpectation,
   type NativeLocalWorktreeMetadataScanExpectation
 } from '../tracking-repos/missing-local-worktree-metadata-pruning'
-
-type MetadataLineageOperationsRuntime = Pick<StoreRuntimeState, 'state'>
-
-const metadataLineageOperationsContext = Symbol('MetadataLineageOperations')
-type MetadataLineageOperationsContext = {
-  runtime: MetadataLineageOperationsRuntime
-  scheduling: WriteSchedulingOperations
-  sessions: SessionHostPartitionOperations
-}
 
 export class MetadataLineageOperations {
   readonly [metadataLineageOperationsContext]: MetadataLineageOperationsContext
@@ -319,29 +314,4 @@ export class MetadataLineageOperations {
     ]
     scheduleSave(this[metadataLineageOperationsContext].scheduling)
   }
-}
-
-export function removeWorkspaceLineageForFolderParent(
-  owner: MetadataLineageOperations,
-  folderWorkspaceId: string
-): void {
-  const parentKey = folderWorkspaceKey(folderWorkspaceId)
-  for (const [childKey, lineage] of Object.entries(
-    owner[metadataLineageOperationsContext].runtime.state.workspaceLineageByChildKey
-  )) {
-    if (lineage.parentWorkspaceKey === parentKey) {
-      delete owner[metadataLineageOperationsContext].runtime.state.workspaceLineageByChildKey[
-        childKey as WorkspaceKey
-      ]
-    }
-  }
-}
-
-export function installMetadataLineageOperationsContext(
-  target: MetadataLineageOperations,
-  source: MetadataLineageOperations
-): void {
-  Object.defineProperty(target, metadataLineageOperationsContext, {
-    value: source[metadataLineageOperationsContext]
-  })
 }

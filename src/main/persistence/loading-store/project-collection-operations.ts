@@ -27,7 +27,7 @@ import {
   pruneMobileClientTabSelections
 } from './repo-lifecycle-operations'
 import { scheduleSave } from './write-scheduling'
-import { removeWorkspaceLineageForFolderParent } from './metadata-lineage-operations'
+import { removeWorkspaceLineageForFolderParent } from './metadata-lineage-operations-context'
 import { bumpLocalWorktreeScanGeneration } from '../../local-worktree-scan-generation'
 
 type ProjectCollectionOperationsRuntime = Pick<
