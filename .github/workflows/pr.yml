@@ -944,9 +944,8 @@ jobs:
     runs-on: ubuntu-24.04-arm
 
     steps:
-      # Why fetch-depth 0: the harness extracts the newest release tag to skew
-      # current code against it. The default shallow clone has no tags, which is
-      # why this cannot ride along in the sharded `test` job.
+      # Why fetch-depth 0: the protocol ratchet needs full history, while this repository
+      # copy may not carry the canonical project's release tags.
       - name: Checkout
         uses: actions/checkout@v6
         with:
@@ -956,6 +955,10 @@ jobs:
           fetch-depth: 0
           filter: blob:none
           persist-credentials: false
+
+      - name: Fetch canonical release tags
+        if: github.repository != 'stablyai/orca'
+        run: git fetch --no-tags --force https://github.com/stablyai/orca.git '+refs/tags/v*:refs/tags/v*'
 
       - uses: ./.github/actions/install-node-dependencies
         with:
