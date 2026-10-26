@@ -77,11 +77,7 @@ describe('observer real loopback WebSocket', () => {
 
       const request = async (id: string, method: string) => {
         client.send(encrypt(JSON.stringify({ id, method }), key))
-        return JSON.parse(decrypt(await nextMessage(client), key) ?? 'null') as {
-          id: string
-          ok: boolean
-          error?: { code: string }
-        }
+        return JSON.parse(decrypt(await nextMessage(client), key) ?? 'null')
       }
       expect(await request('read', 'observer.runtimeIdentity')).toMatchObject({
         id: 'read',

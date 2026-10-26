@@ -52,7 +52,17 @@ function validRow(value: unknown): value is ObserverCredentialRow {
   if (typeof value !== 'object' || value === null) {
     return false
   }
-  const row = value as Partial<ObserverCredentialRow>
+  if (
+    !('id' in value) ||
+    !('tokenHash' in value) ||
+    !('createdAt' in value) ||
+    !('worktreeId' in value) ||
+    !('worktreeInstanceId' in value) ||
+    !('expiresAt' in value)
+  ) {
+    return false
+  }
+  const row = value
   return (
     typeof row.id === 'string' &&
     /^[0-9a-f-]{36}$/.test(row.id) &&
@@ -98,7 +108,7 @@ export class ObserverCredentialStore {
       hardenExistingSecureFile(this.path)
       text = readFileSync(this.path, 'utf8')
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
         return []
       }
       throw error
@@ -107,7 +117,10 @@ export class ObserverCredentialStore {
     if (typeof parsed !== 'object' || parsed === null) {
       throw new Error('Invalid observer store')
     }
-    const store = parsed as { version?: unknown; credentials?: unknown }
+    if (!('version' in parsed) || !('credentials' in parsed)) {
+      throw new Error('Invalid observer store')
+    }
+    const store = parsed
     if (store.version !== 1 || !Array.isArray(store.credentials)) {
       throw new Error('Invalid observer store')
     }
@@ -126,7 +139,7 @@ export class ObserverCredentialStore {
     if (!store.credentials.every(validRow)) {
       throw new Error('Invalid observer store')
     }
-    const rows = store.credentials as ObserverCredentialRow[]
+    const rows = store.credentials.filter(validRow)
     if (new Set(rows.map((row) => row.id)).size !== rows.length) {
       throw new Error('Duplicate observer credential id')
     }

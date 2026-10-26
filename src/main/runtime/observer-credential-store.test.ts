@@ -48,7 +48,7 @@ describe('separate observer credentials', () => {
       expect(() => store.issue('worktree-a', '')).toThrow(
         'Invalid observer worktree scope or instance'
       )
-      expect(() => store.issue(undefined as unknown as string, 'instance-a')).toThrow(
+      expect(() => Reflect.apply(store.issue, store, [undefined, 'instance-a'])).toThrow(
         'Invalid observer worktree scope or instance'
       )
       const issued = store.issue('worktree-a', 'instance-a')
@@ -90,10 +90,10 @@ describe('separate observer credentials', () => {
     const { dir, store } = setup()
     const issued = store.issue('worktree-a', 'instance-a')
     const path = join(dir, 'observer-credentials.v1.json')
-    const saved = JSON.parse(readFileSync(path, 'utf8')) as {
+    const saved: {
       version: number
       credentials: unknown[]
-    }
+    } = JSON.parse(readFileSync(path, 'utf8'))
     saved.credentials.push({
       id: '00000000-0000-4000-8000-000000000000',
       tokenHash: '0'.repeat(64),
@@ -115,10 +115,10 @@ describe('separate observer credentials', () => {
     const { dir, store } = setup()
     const issued = store.issue('worktree-a', 'instance-a')
     const path = join(dir, 'observer-credentials.v1.json')
-    const saved = JSON.parse(readFileSync(path, 'utf8')) as {
+    const saved: {
       version: number
       credentials: unknown[]
-    }
+    } = JSON.parse(readFileSync(path, 'utf8'))
     saved.credentials.push({
       id: '00000000-0000-4000-8000-000000000001',
       tokenHash: '0'.repeat(64),
@@ -139,10 +139,10 @@ describe('separate observer credentials', () => {
     const { dir, store } = setup()
     const issued = store.issue('worktree-a', 'instance-a')
     const path = join(dir, 'observer-credentials.v1.json')
-    const saved = JSON.parse(readFileSync(path, 'utf8')) as {
+    const saved: {
       version: number
       credentials: { createdAt: number; expiresAt: number }[]
-    }
+    } = JSON.parse(readFileSync(path, 'utf8'))
     saved.credentials[0]!.expiresAt = saved.credentials[0]!.createdAt + 3_600_001
     writeFileSync(path, JSON.stringify(saved))
     expect(store.authenticate(issued.token)).toBeNull()

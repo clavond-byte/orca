@@ -291,7 +291,10 @@ describe('runtime observer scope', () => {
         appVersion: expect.any(String)
       }
     })
-    expect(response.ok && Object.keys(response.result as object).sort()).toEqual([
+    if (!response.ok || typeof response.result !== 'object' || response.result === null) {
+      throw new Error('Expected object result')
+    }
+    expect(Object.keys(response.result).sort()).toEqual([
       'appVersion',
       'runtimeId',
       'startedAt'

@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { WebSocket } from 'ws'
+import WebSocket from 'ws'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { decrypt, deriveSharedKey, encrypt, generateKeyPair } from '../../shared/e2ee-crypto'
 import { OrcaRuntimeService } from './orca-runtime'
@@ -11,6 +11,20 @@ import { ObserverCredentialStore } from './observer-credential-store'
 import { defineMethod } from './rpc/core'
 import { RUNTIME_OBSERVER_METHODS } from './rpc/methods/runtime-observer'
 import type { AuthenticatedMobileSocket, MobileSocketTransport } from './rpc/mobile-socket-wiring'
+
+function syntheticWebSocket(send: (frame: string) => void = () => {}): WebSocket {
+  const socket: WebSocket = Object.create(WebSocket.prototype)
+  Object.defineProperties(socket, {
+    OPEN: { value: 1 },
+    readyState: { value: 1 },
+    bufferedAmount: { value: 0 },
+    send: { value: vi.fn(send) },
+    close: { value: vi.fn() },
+    on: { value: vi.fn() },
+    off: { value: vi.fn() }
+  })
+  return socket
+}
 
 const directories: string[] = []
 const servers: OrcaRuntimeRpcServer[] = []
@@ -81,16 +95,7 @@ describe('observer WebSocket request authorization', () => {
       publicKeyB64: Buffer.from(serverKeys.publicKey).toString('base64')
     })
     const sent: string[] = []
-    // SAFETY: this fake implements the E2EE and dispatch socket methods used below.
-    const ws = {
-      OPEN: 1,
-      readyState: 1,
-      bufferedAmount: 0,
-      send: vi.fn((frame: string) => sent.push(frame)),
-      close: vi.fn(),
-      on: vi.fn(),
-      off: vi.fn()
-    } as unknown as WebSocket
+    const ws = syntheticWebSocket((frame) => sent.push(frame))
     let receive: Parameters<MobileSocketTransport['onMessage']>[0] | null = null
     const transport: MobileSocketTransport = {
       onMessage: (handler) => {
@@ -317,15 +322,7 @@ describe('observer WebSocket request authorization', () => {
     })
     expect(registry.validateToken(issued.token)).toBeNull()
 
-    const reconnectWs = {
-      OPEN: 1,
-      readyState: 1,
-      bufferedAmount: 0,
-      send: vi.fn(),
-      close: vi.fn(),
-      on: vi.fn(),
-      off: vi.fn()
-    } as unknown as WebSocket
+    const reconnectWs = syntheticWebSocket()
     const reconnect = (frame: string) => receive?.(frame, vi.fn(), reconnectWs)
     reconnect(
       JSON.stringify({
@@ -361,7 +358,7 @@ describe('observer WebSocket request authorization', () => {
     servers.push(server)
     // SAFETY: the server only uses the socket's identity fields in this direct-dispatch test.
     const socket: AuthenticatedMobileSocket = {
-      ws: {} as WebSocket,
+      ws: syntheticWebSocket(),
       connectionId: 'observer-connection',
       clientCapabilities: [],
       transport: { transport: 'direct' },
