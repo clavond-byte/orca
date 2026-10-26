@@ -6,7 +6,7 @@ import type { Repo } from '../../../shared/repo-types'
 import { LOCAL_EXECUTION_HOST_ID, type ExecutionHostId } from '../../../shared/execution-host'
 import { getRepoIdFromWorktreeId } from '../../../shared/worktree/id'
 import { hasWorktreeRemovalRepoOwnerOnOtherHost } from '../../worktree-removal-repo-owner'
-import { folderWorkspaceKey, worktreeWorkspaceKey } from '../../../shared/workspace-scope'
+import { worktreeWorkspaceKey } from '../../../shared/workspace-scope'
 import {
   workspaceSessionOwnerPartitionForHost,
   workspaceSessionPartitionIdsForHost
@@ -318,22 +318,6 @@ export class MetadataLineageOperations {
       childWorkspaceKey
     ]
     scheduleSave(this[metadataLineageOperationsContext].scheduling)
-  }
-}
-
-export function removeWorkspaceLineageForFolderParent(
-  owner: MetadataLineageOperations,
-  folderWorkspaceId: string
-): void {
-  const parentKey = folderWorkspaceKey(folderWorkspaceId)
-  for (const [childKey, lineage] of Object.entries(
-    owner[metadataLineageOperationsContext].runtime.state.workspaceLineageByChildKey
-  )) {
-    if (lineage.parentWorkspaceKey === parentKey) {
-      delete owner[metadataLineageOperationsContext].runtime.state.workspaceLineageByChildKey[
-        childKey as WorkspaceKey
-      ]
-    }
   }
 }
 

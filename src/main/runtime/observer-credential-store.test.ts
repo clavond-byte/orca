@@ -139,10 +139,10 @@ describe('separate observer credentials', () => {
     const { dir, store } = setup()
     const issued = store.issue('worktree-a', 'instance-a')
     const path = join(dir, 'observer-credentials.v1.json')
-    const saved = JSON.parse(readFileSync(path, 'utf8')) as {
+    const saved: {
       version: number
-      credentials: Array<{ createdAt: number; expiresAt: number }>
-    }
+      credentials: { createdAt: number; expiresAt: number }[]
+    } = JSON.parse(readFileSync(path, 'utf8'))
     saved.credentials[0]!.expiresAt = saved.credentials[0]!.createdAt + 3_600_001
     writeFileSync(path, JSON.stringify(saved))
     expect(store.authenticate(issued.token)).toBeNull()
