@@ -227,6 +227,7 @@ export class RuntimeRpcLifecycle extends RuntimeRpcWebSocketDispatch {
     const mobileSocketWiring = new MobileSocketWiring({
       deviceRegistry,
       e2eeKeypair,
+      resolveObserverCredential: (token) => this.observerCredentialStore.authenticate(token),
       onText: (socket, plaintext, reply, sendBinary) => {
         void this.trackClientRequest(() =>
           this.handleWebSocketMessage(
@@ -268,6 +269,9 @@ export class RuntimeRpcLifecycle extends RuntimeRpcWebSocketDispatch {
           return
         }
         this.abortWebSocketDispatches(socket.ws)
+        if (socket.device.observer) {
+          return
+        }
         this.mobileDesktopRelay?.closePhoneConnection(socket.connectionId)
         // Stream cleanup is socket-scoped; disconnect state spans all transports for that device.
         this.runtime.cleanupSubscriptionsForConnection(socket.connectionId)
