@@ -9,7 +9,6 @@ import {
   writeFileSync
 } from 'node:fs'
 import { createServer, type Server } from 'node:http'
-import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -83,7 +82,9 @@ describe.runIf(binary)('codex hook file-entry binary contract', { timeout: 180_0
 
   beforeAll(async () => {
     // Why a disposable HOME: nothing here may read or write the user's own ~/.codex.
-    root = realpathSync(mkdtempSync(join(tmpdir(), 'orca-codex-hook-contract-')))
+    root = realpathSync(
+      mkdtempSync(join(process.env.RUNNER_TEMP ?? process.cwd(), 'orca-codex-hook-contract-'))
+    )
     const version = await execFileAsync(binary!, ['--version'], {
       timeout: TIMEOUT_MS,
       env: { ...process.env, HOME: join(root, 'version-home'), CODEX_HOME: join(root, 'v') }
