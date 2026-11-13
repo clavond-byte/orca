@@ -5,6 +5,8 @@
  * cannot ship without someone deciding which callers may reach it.
  */
 export type RpcMethodPermission =
+  /** Fixed, non-mutating runtime observations. */
+  | 'observer-read'
   /** Projects, worktrees, terminals, files, git, browser, orchestration and integrations. */
   | 'workspace'
   /** Drives this machine's own desktop: clicks, keys and app state outside Orca. */
@@ -27,6 +29,7 @@ export const RUNTIME_DEVICE_GRANTS = [
 export type RuntimeDeviceGrant = (typeof RUNTIME_DEVICE_GRANTS)[number]
 
 export const RPC_METHOD_PERMISSIONS: readonly RpcMethodPermission[] = [
+  'observer-read',
   'workspace',
   'desktop-control',
   'accounts-admin',

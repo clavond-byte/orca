@@ -1,4 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import nacl from 'tweetnacl'
 import type { WebSocket } from 'ws'
 import {
@@ -9,6 +12,7 @@ import {
 } from '../../../shared/mobile-e2ee-v2-contract'
 import { sealMobileE2EEV2Frame } from '../../../shared/mobile-e2ee-v2-framing'
 import type { DeviceRegistry } from '../device-registry'
+import { ObserverCredentialStore } from '../observer-credential-store'
 import { deriveSharedKey, encrypt, generateKeyPair } from './e2ee-crypto'
 import { deriveMobileE2EEV2KeySchedule } from './mobile-e2ee-v2-key-schedule'
 import {
@@ -72,6 +76,120 @@ function registryFor(
 }
 
 describe('MobileSocketWiring', () => {
+  it('authenticates a separate observer bearer only as an inert direct socket', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'orca-observer-wiring-'))
+    const store = new ObserverCredentialStore(dir)
+    const issued = store.issue('worktree-a', 'instance-a')
+    const desktop = generateKeyPair()
+    const client = generateKeyPair()
+    const ws = new FakeSocket()
+    const transport = new FakeTransport()
+    const registry = registryFor('device-1', 'normal-token', 'runtime')
+    const onText = vi.fn()
+    const onBinary = vi.fn()
+    const onReady = vi.fn()
+    const wiring = new MobileSocketWiring({
+      deviceRegistry: registry,
+      observerCredentialStore: store,
+      e2eeKeypair: {
+        publicKey: desktop.publicKey,
+        secretKey: desktop.secretKey,
+        publicKeyB64: Buffer.from(desktop.publicKey).toString('base64')
+      },
+      onText,
+      onBinary,
+      onClose: vi.fn(),
+      onReady
+    })
+    try {
+      wiring.attachTransport(transport)
+      transport.receive(
+        ws,
+        JSON.stringify({
+          type: 'e2ee_hello',
+          publicKeyB64: Buffer.from(client.publicKey).toString('base64')
+        })
+      )
+      const key = deriveSharedKey(client.secretKey, desktop.publicKey)
+      transport.receive(
+        ws,
+        encrypt(JSON.stringify({ type: 'e2ee_auth', deviceToken: issued.token }), key)
+      )
+      transport.receive(ws, encrypt('{"id":"read","method":"observer.runtimeIdentity"}', key))
+      expect(onText).toHaveBeenCalledOnce()
+      expect(onText.mock.calls[0]?.[0]).toMatchObject({
+        device: {
+          observerCredentialId: issued.id,
+          deviceId: `observer:${issued.id}`,
+          deviceToken: issued.token
+        },
+        transport: { transport: 'direct' }
+      })
+      expect(onReady).not.toHaveBeenCalled()
+      expect(registry.updateLastSeenDeferred).not.toHaveBeenCalled()
+      expect(onBinary).not.toHaveBeenCalled()
+    } finally {
+      wiring.dispose()
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('denies invalid, revoked, and expired observer reconnects without changing device pairing state', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'orca-observer-denial-'))
+    const store = new ObserverCredentialStore(dir)
+    const revoked = store.issue('worktree-a', 'instance-a')
+    const expired = store.issue('worktree-a', 'instance-a')
+    store.revoke(revoked.id)
+    const desktop = generateKeyPair()
+    const client = generateKeyPair()
+    const transport = new FakeTransport()
+    const onUnpairedDeviceAuthFailure = vi.fn()
+    const registry = registryFor('device-1', 'normal-token')
+    const wiring = new MobileSocketWiring({
+      deviceRegistry: registry,
+      observerCredentialStore: store,
+      e2eeKeypair: {
+        publicKey: desktop.publicKey,
+        secretKey: desktop.secretKey,
+        publicKeyB64: Buffer.from(desktop.publicKey).toString('base64')
+      },
+      onText: vi.fn(),
+      onBinary: vi.fn(),
+      onClose: vi.fn(),
+      onUnpairedDeviceAuthFailure
+    })
+    try {
+      wiring.attachTransport(transport)
+      const attempt = (token: string) => {
+        const ws = new FakeSocket()
+        transport.receive(
+          ws,
+          JSON.stringify({
+            type: 'e2ee_hello',
+            publicKeyB64: Buffer.from(client.publicKey).toString('base64')
+          })
+        )
+        const key = deriveSharedKey(client.secretKey, desktop.publicKey)
+        transport.receive(ws, encrypt(JSON.stringify({ type: 'e2ee_auth', deviceToken: token }), key))
+        expect(ws.close).toHaveBeenCalledWith(4001, 'Unauthorized')
+        expect(transport.setClientId).not.toHaveBeenCalled()
+        expect(onUnpairedDeviceAuthFailure).not.toHaveBeenCalled()
+      }
+      attempt(`orca-observer-v1-${'A'.repeat(43)}`)
+      attempt(revoked.token)
+      const clock = vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 3_600_001)
+      try {
+        attempt(expired.token)
+      } finally {
+        clock.mockRestore()
+      }
+      expect(registry.updateLastSeenDeferred).not.toHaveBeenCalled()
+    } finally {
+      wiring.dispose()
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
   it('terminates a revoked device across every attached transport', () => {
     const direct = new FakeTransport()
     const relay = new FakeTransport()
@@ -399,6 +517,82 @@ describe('MobileSocketWiring', () => {
 
     expect(transport.setClientId).not.toHaveBeenCalled()
     expect(ws.close).toHaveBeenCalledWith(4001, 'Unauthorized')
+  })
+
+  it('rejects an observer bearer over relay even when the outer identity matches', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'orca-observer-relay-'))
+    const store = new ObserverCredentialStore(dir)
+    const issued = store.issue('worktree-a', 'instance-a')
+    const desktop = nacl.box.keyPair.fromSecretKey(new Uint8Array(32).fill(1))
+    const client = nacl.box.keyPair.fromSecretKey(new Uint8Array(32).fill(2))
+    const ws = new FakeSocket()
+    const transport = new FakeTransport()
+    const metadata: MobileSocketTransportMetadata = {
+      transport: 'relay',
+      relayHostId: 'AbCdEf0123_-xyZ9',
+      relayDeviceId: `observer:${issued.id}`,
+      basisConnId: 'connection-observer',
+      credentialKind: 'invite'
+    }
+    const wiring = new MobileSocketWiring({
+      deviceRegistry: registryFor('device-1', 'normal-token'),
+      observerCredentialStore: store,
+      e2eeKeypair: {
+        publicKey: desktop.publicKey,
+        secretKey: desktop.secretKey,
+        publicKeyB64: Buffer.from(desktop.publicKey).toString('base64')
+      },
+      onText: vi.fn(),
+      onBinary: vi.fn(),
+      onClose: vi.fn()
+    })
+    try {
+      wiring.attachTransport(transport, () => metadata)
+      const hello: MobileE2EEV2Hello = {
+        type: 'e2ee_hello',
+        v: 2,
+        clientPublicKeyB64: Buffer.from(client.publicKey).toString('base64'),
+        clientNonceB64: Buffer.from(new Uint8Array(32).fill(3)).toString('base64'),
+        capabilities: { framing: [2], payloadKinds: ['text', 'binary'] },
+        context: {
+          protocol: 'orca-mobile-e2ee',
+          initiator: 'mobile',
+          responder: 'desktop',
+          transport: 'relay',
+          relayHostId: metadata.relayHostId
+        }
+      }
+      transport.receive(ws, JSON.stringify(hello))
+      const ready = JSON.parse(ws.sent[0]!.toString()) as MobileE2EEV2Ready
+      const handshake = validateMobileE2EEV2Handshake(hello, ready)!
+      const schedule = deriveMobileE2EEV2KeySchedule({
+        sharedSecret: deriveSharedKey(client.secretKey, desktop.publicKey),
+        transcript: encodeMobileE2EEV2Transcript(handshake),
+        clientNonce: handshake.clientNonce,
+        desktopNonce: handshake.desktopNonce
+      })
+      const auth = sealMobileE2EEV2Frame({
+        payload: new TextEncoder().encode(
+          JSON.stringify({
+            type: 'e2ee_auth',
+            v: 2,
+            transcriptHashB64: Buffer.from(schedule.transcriptHash).toString('base64'),
+            deviceToken: issued.token
+          })
+        ),
+        key: schedule.mobileToDesktopKey,
+        sessionId: schedule.sessionId,
+        direction: 'mobile-to-desktop',
+        payloadKind: 'text',
+        counter: 0n
+      })
+      transport.receive(ws, Buffer.from(auth).toString('base64'))
+      expect(transport.setClientId).not.toHaveBeenCalled()
+      expect(ws.close).toHaveBeenCalledWith(4001, 'Unauthorized')
+    } finally {
+      wiring.dispose()
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 
   it('keeps post-auth v2 capability-shaped frames on the RPC path', () => {

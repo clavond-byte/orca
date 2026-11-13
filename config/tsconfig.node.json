@@ -9,6 +9,7 @@
     "./scripts/vitest-real-agent-home-write-guard.ts",
     "./scripts/vitest-bun-node-builtins.ts",
     "./scripts/vitest-node-runtime-pool.ts",
+    "./scripts/observer-credential-*.ts",
     "../src/main/**/*",
     "../src/renderer/src/lib/skill-freshness-display-status.ts",
     "../src/renderer/src/components/native-chat/native-chat-resolution-receipt.ts",

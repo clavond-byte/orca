@@ -27,6 +27,7 @@ import {
   getAllWorktreeMetaForHost as getAllWorktreeMetaForHostOperation,
   getWorktreeMetaForHost as getWorktreeMetaForHostOperation,
   migrateWorktreeMetadataLocator,
+  peekUniqueWorktreeInstanceForHost as peekUniqueWorktreeInstanceForHostOperation,
   removeWorktreeMetadataForHost,
   setWorktreeMetaForHost as setWorktreeMetaForHostOperation,
   WORKTREE_METADATA_DOMAINS
@@ -94,19 +95,20 @@ export class MetadataLineageOperations {
   }
 
   getAllWorktreeMetaForHost(executionHostId: ExecutionHostId): Record<string, WorktreeMeta> {
-    return getAllWorktreeMetaForHostOperation(
-      this[metadataLineageOperationsContext].runtime,
-      executionHostId
-    )
+    const runtime = this[metadataLineageOperationsContext].runtime
+    return getAllWorktreeMetaForHostOperation(runtime, executionHostId)
+  }
+
+  peekUniqueWorktreeInstanceForHost(worktreeId: string, executionHostId: ExecutionHostId) {
+    const runtime = this[metadataLineageOperationsContext].runtime
+    return peekUniqueWorktreeInstanceForHostOperation(runtime, worktreeId, executionHostId)
   }
 
   captureNativeLocalWorktreeMetadataScanExpectation(
     repo: Repo
   ): NativeLocalWorktreeMetadataScanExpectation {
-    return captureNativeLocalWorktreeMetadataScanExpectationOperation(
-      this[metadataLineageOperationsContext].runtime.state,
-      repo
-    )
+    const state = this[metadataLineageOperationsContext].runtime.state
+    return captureNativeLocalWorktreeMetadataScanExpectationOperation(state, repo)
   }
 
   setWorktreeMeta(

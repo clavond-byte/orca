@@ -20,6 +20,7 @@ export type { RuntimeDeviceGrant }
 export type RpcCallerScope =
   | { kind: 'owner' }
   | { kind: 'mobile' }
+  | { kind: 'runtime-observer'; worktreeId?: string }
   | { kind: 'runtime-paired'; grants: readonly RuntimeDeviceGrant[] }
   /** The `orca` CLI of a remote SSH host, relayed through this host's bridge. `remoteCliControl`
    *  is the per-target opt-in that lets that host's CLI act outside its own terminals. */
@@ -48,6 +49,19 @@ export function denyRpcMethodForCaller(
   methodName: string,
   permission: RpcMethodPermission | undefined
 ): string | null {
+  if (scope.kind === 'runtime-observer') {
+    if (permission === 'observer-read' && methodName === 'observer.runtimeIdentity') {
+      return null
+    }
+    if (
+      permission === 'observer-read' &&
+      methodName === 'observer.sessionInventory' &&
+      scope.worktreeId
+    ) {
+      return null
+    }
+    return `Method '${methodName}' is not available to runtime observers`
+  }
   if (scope.kind === 'mobile') {
     return MOBILE_RPC_METHOD_ALLOWLIST.has(methodName)
       ? null

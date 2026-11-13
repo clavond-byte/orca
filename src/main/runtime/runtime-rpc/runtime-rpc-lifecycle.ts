@@ -9,6 +9,7 @@ import type { DeviceRegistry } from '../device-registry'
 import type { E2EEKeypair } from '../e2ee-keypair'
 import { UnpairedDeviceAuthThrottle } from '../rpc/unpaired-device-auth-throttle'
 import { MobileSocketWiring } from '../rpc/mobile-socket-wiring'
+import { ObserverCredentialStore } from '../observer-credential-store'
 import { RuntimeRpcWebSocketDispatch } from './runtime-rpc-websocket-dispatch'
 import {
   formatWsEndpoint,
@@ -214,6 +215,7 @@ export class RuntimeRpcLifecycle extends RuntimeRpcWebSocketDispatch {
     })
     const mobileSocketWiring = new MobileSocketWiring({
       deviceRegistry,
+      observerCredentialStore: new ObserverCredentialStore(this.userDataPath),
       e2eeKeypair,
       onText: (socket, plaintext, reply, sendBinary) => {
         void this.trackClientRequest(() =>
@@ -229,6 +231,9 @@ export class RuntimeRpcLifecycle extends RuntimeRpcWebSocketDispatch {
         )
       },
       onBinary: (socket, bytes) => {
+        if (socket.device.observerCredentialId) {
+          return
+        }
         this.lastClientRequestAt = Date.now()
         this.handleWebSocketBinaryMessage(bytes, socket.ws)
       },
@@ -249,6 +254,9 @@ export class RuntimeRpcLifecycle extends RuntimeRpcWebSocketDispatch {
           return
         }
         this.abortWebSocketDispatches(socket.ws)
+        if (socket.device.observerCredentialId) {
+          return
+        }
         // Why: subscriptions and binary streams are socket-scoped, but disconnect state is device-scoped across transports.
         this.runtime.cleanupSubscriptionsForConnection(socket.connectionId)
         this.runtime.cancelMobileDictationForConnection(socket.connectionId)
